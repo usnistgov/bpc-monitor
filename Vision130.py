@@ -11,7 +11,6 @@ import struct
 # message = b'/00RC' # Get TIME
 # message = b'/00RW0000FF'  # Read all int addresses
 # message = b'/00RNF000001' # Read single float address at address 0
-configdir = os.environ.get('USERPROFILE') + '\\.bpc'
 class Vision130Driver:
     
     def __init__(self, host, port):
@@ -25,7 +24,6 @@ class Vision130Driver:
             self.s.connect((host, int(port)))
         except socket.gaierror as e:
             print ("Could not connect with socket-server (host/port error): %s" % e)
-            print ("Please update host/port at: %s", configdir)
         except socket.error as e:
             print ("Connection error: %s" % e)
 

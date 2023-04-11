@@ -146,6 +146,8 @@ class mainWindow(QMainWindow, main_file):
         self.setFixedSize(WIDTH, HEIGHT)
         self.tray_icon = None
         self.quit_flag = 0
+        self.ct = 0
+        self.timestamp = datetime.datetime.now()
         self.settings = QSettings("global_settings.ini", QSettings.Format.IniFormat)
         self.setupUi(self)
         self.timer = QTimer()
@@ -198,6 +200,7 @@ class mainWindow(QMainWindow, main_file):
 
     def _getAllData(self, all_rbv):
          # print(all_rbv)
+         self.timestamp = datetime.datetime.now()
          self.lbl_pressure_rbv.setText(str(round(all_rbv[20], 3)))
          self.lbl_flow_rbv.setText(str(round(all_rbv[10], 3)))
          self.lbl_valve_rbv.setText(str(round(all_rbv[-1], 3)))
@@ -251,19 +254,19 @@ class mainWindow(QMainWindow, main_file):
     @QtCore.pyqtSlot()
     def plot_data(self):
         logger.info("In function: " + inspect.stack()[0][3])
-        timestamp = datetime.datetime.now()
-        ct = time.time() - self.start_time
-        ct = ct/60.0 # mins
+        # ct = time.time() - self.start_time
+        if self.ct >= 86400:
+            self.ct = 0
         pressure = self.lbl_pressure_rbv.text()
         flow = self.lbl_flow_rbv.text()
         valve = self.lbl_valve_rbv.text()
 
         if pressure != '0':
-            self.data_pressure.append({'x':float(ct), 'y':float(pressure),})
-            self.data_flow.append({'x':float(ct), 'y':float(flow),})
+            self.data_pressure.append({'x':float(self.ct/60.0), 'y':float(pressure),})
+            self.data_flow.append({'x':float(self.ct/60.0), 'y':float(flow),})
             # append the data to file
             with open(self.fname, 'a') as f:
-                f.write(str(timestamp) + '\t' + str(pressure) + '\t' + str(flow) + '\t' + str(valve) + '\n')
+                f.write(str(self.timestamp) + '\t' + str(pressure) + '\t' + str(flow) + '\t' + str(valve) + '\n')
         count_list = [item['x'] for item in self.data_pressure]
         count_list_2 = [item['x'] for item in self.data_flow]
         pressure_list = [item['y'] for item in self.data_pressure]
@@ -274,6 +277,7 @@ class mainWindow(QMainWindow, main_file):
         except:
             self.curve1.setData(x = count_list, y = 0.00, pen = 'r', symbol='o', symbolSize=2, symbolBrush='r')
             self.curve2.setData(x = count_list_2, y = 0.00, pen = 'b', symbol='x', symbolSize=2, symbolBrush='b')
+        self.ct = self.ct + 1
 
     def closeEvent(self, event):
         """
@@ -358,7 +362,11 @@ if __name__ == '__main__':
     #    config_path = os.getcwd() + os.sep + 'config.ini'
     #config.read(config_path)
     # Initialize all the hardware used for this application
-    mybpc = Vision130.Vision130Driver(str(os.getenv('BPC_SERVER')), '20256')
+    try:
+        myserver = str(os.getenv('BPC_SERVER'))
+    except:
+        myserver = '172.30.33.212'
+    mybpc = Vision130.Vision130Driver(myserver, '20256')
     # start the main thread
     mthread = mainThread()
     mthread.start()
