@@ -74,11 +74,12 @@ fmt = logging.Formatter('%(asctime)s : %(levelname)s : %(name)s : %(message)s')
 file_handler.setFormatter(fmt)
 logger.addHandler(file_handler)
 
-__version__ = "0.2" # Program version string
+__version__ = "0.3" # Program version string
 MAIN_THREAD_POLL = 1000 # in ms
 He_EXP_RATIO = 1./757 # liquid to gas expansion ratio for Helium at RT
 WIDTH = 410
-HEIGHT= 230
+HEIGHT= 250
+HIST = 24
 os.chdir(base_dir)
 # load the main ui file
 main_file = uic.loadUiType(os.path.join(base_dir, 'ui\\main.ui'))[0]
@@ -108,11 +109,11 @@ class mainThread(QThread, QObject):
         logger.info("In function: " + inspect.stack()[0][3])
         try:
             bpc_rbv =  mybpc.get_all_float() # get all float data from the controller
-            n = len(bpc_rbv)
+            return bpc_rbv
         except Exception as e:
             logger.info("In function: " + inspect.stack()[0][3] + ' ' + str(e))
-            bpc_rbv = [0]*n
-        return bpc_rbv
+            return [0]*24
+        
 
     def run(self):
         """
@@ -146,15 +147,15 @@ class mainWindow(QMainWindow, main_file):
         self.setFixedSize(WIDTH, HEIGHT)
         self.tray_icon = None
         self.quit_flag = 0
-        self.ct = 0
+        # self.ct = 0
         self.timestamp = datetime.datetime.now()
         self.settings = QSettings("global_settings.ini", QSettings.Format.IniFormat)
         self.setupUi(self)
         self.timer = QTimer()
         self.plot_settings()
         self.fname = datadir + '\\bpc_log_' + time.strftime("%Y%m%d") + '.txt'
-        self.data_pressure = deque(maxlen=int(86400/(24*MAIN_THREAD_POLL*1e-3)))
-        self.data_flow = deque(maxlen=int(86400/(24*MAIN_THREAD_POLL*1e-3)))
+        self.data_pressure = deque(maxlen=int(86400/(HIST*MAIN_THREAD_POLL*1e-3))) # 
+        self.data_flow = deque(maxlen=int(86400/(HIST*MAIN_THREAD_POLL*1e-3)))
 
         mthread.update_data.connect(self._getAllData)
         mthread.plot_temp.connect(self.plot_data)
@@ -174,9 +175,15 @@ class mainWindow(QMainWindow, main_file):
         self.tray_icon.show()
 
         self.btn_quit.clicked.connect(self.quit)
+        self.btn_clr_plots.clicked.connect(self.clear_plots)
         show_action.triggered.connect(self.show)
         quit_action.triggered.connect(self._exit_app)
         hide_action.triggered.connect(self.hide)
+        
+        self.cb_plt_hist.addItems(['1 min', ' 5 min', '1 hr', '2 hr', '12 hr', '1 d'])
+        self.cb_plt_hist.setCurrentText('1 hr')
+        self.cb_plt_hist.activated.connect(self.set_plot_history)
+        
         logger.info ("In function: " + inspect.stack()[0][3])
         self.start_time = time.time()
 
@@ -222,6 +229,32 @@ class mainWindow(QMainWindow, main_file):
             file_handler.close()
             self.close()
         self.fname = datadir + '\\bpc_log_' + time.strftime("%Y%m%d") + '.txt'
+    
+    def set_plot_history(self):
+        plt_history = self.cb_plt_hist.currentText()
+        if plt_history == '1 min':
+            HIST = 1440
+        elif plt_history == '5 min':
+            HIST = 288
+        elif plt_history == '1 hr':
+            HIST = 24
+        elif plt_history == '2 hr':
+            HIST = 12
+        elif plt_history == '12 hr':
+            HIST = 2
+        elif plt_history == '1 d':
+            HIST = 1
+        self.data_pressure = deque(maxlen=int(86400/(HIST*MAIN_THREAD_POLL*1e-3)))
+        self.data_flow = deque(maxlen=int(86400/(HIST*MAIN_THREAD_POLL*1e-3)))
+        
+    def clear_plots(self):
+        logger.info("In function: " + inspect.stack()[0][3])
+        try:
+            # clear/redefine the tuples
+            self.data_pressure = deque(maxlen=int(86400/(HIST*MAIN_THREAD_POLL*1e-3)))
+            self.data_flow = deque(maxlen=int(86400/(HIST*MAIN_THREAD_POLL*1e-3)))
+        except Exception as e:
+            logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
 
     def plot_settings(self):
         """
@@ -230,18 +263,23 @@ class mainWindow(QMainWindow, main_file):
         logger.info("In function: " + inspect.stack()[0][3])
         labelStyle_y1 = {'color': 'red', 'font-size': '8pt'}
         labelStyle_y2 = {'color': 'blue', 'font-size': '8pt'}
-        labelStyle_x = {'color': 'white', 'font-size': '8pt'}
+        labelStyle_x = {'color': 'black', 'font-size': '8pt'}
         self.pw.plotItem.clear()
         self.pw_2.plotItem.clear()
+        self.pw.setBackground((0,0,0,240))
+        self.pw_2.setBackground((0,0,0,240))
         self.pw.plotItem.setLabel(axis='left', text='P', units= 'mbar', **labelStyle_y1)
         self.pw_2.plotItem.setLabel(axis='left', text='Flow', units= 'l/min',  **labelStyle_y2)
-        self.pw_2.plotItem.setLabel(axis='bottom', text = 'time', units = 'min', **labelStyle_x)
-        self.pw.plotItem.showGrid(x=True, y=True)
-        self.pw_2.plotItem.showGrid(x=True, y=True)
+        self.pw_2.plotItem.setLabel(axis='bottom', text = 'time', units= 'HH:MM:SS', **labelStyle_x)
+        self.pw.plotItem.showGrid(x=True, y=False)
+        self.pw_2.plotItem.showGrid(x=True, y=False)
+        date_axis = pg.DateAxisItem()
+        self.pw_2.setAxisItems({'bottom': date_axis})
         item = self.pw.getPlotItem()
         item_2 = self.pw_2.getPlotItem()
-        self.xax = item.getAxis('bottom')
-        self.xax.enableAutoSIPrefix(enable=False)
+        item.hideAxis('bottom')
+        # self.xax = item.getAxis('bottom')
+        # self.xax.enableAutoSIPrefix(enable=False)
         self.xax_2 = item_2.getAxis('bottom')
         self.xax_2.enableAutoSIPrefix(enable=False)
         self.yax = item.getAxis('left')
@@ -253,17 +291,17 @@ class mainWindow(QMainWindow, main_file):
 
     @QtCore.pyqtSlot()
     def plot_data(self):
+
         logger.info("In function: " + inspect.stack()[0][3])
-        # ct = time.time() - self.start_time
-        if self.ct >= 86400:
-            self.ct = 0
+        # convert datetime object to timestamp
+        ct = self.timestamp.timestamp()
         pressure = self.lbl_pressure_rbv.text()
         flow = self.lbl_flow_rbv.text()
         valve = self.lbl_valve_rbv.text()
 
         if pressure != '0':
-            self.data_pressure.append({'x':float(self.ct/60.0), 'y':float(pressure),})
-            self.data_flow.append({'x':float(self.ct/60.0), 'y':float(flow),})
+            self.data_pressure.append({'x':ct, 'y':float(pressure),})
+            self.data_flow.append({'x':ct, 'y':float(flow),})
             # append the data to file
             with open(self.fname, 'a') as f:
                 f.write(str(self.timestamp) + '\t' + str(pressure) + '\t' + str(flow) + '\t' + str(valve) + '\n')
@@ -271,13 +309,13 @@ class mainWindow(QMainWindow, main_file):
         count_list_2 = [item['x'] for item in self.data_flow]
         pressure_list = [item['y'] for item in self.data_pressure]
         flow_list = [item['y'] for item in self.data_flow]
+        #print (len(self.data_pressure), len(self.data_flow))
         try:
-            self.curve1.setData(x = count_list, y = pressure_list, pen = 'r', shadowPen = 'r', symbol='o', symbolSize=2, symbolBrush='r')
-            self.curve2.setData(x = count_list_2, y = flow_list, pen = 'b', shadowPen = 'b', symbol='x', symbolSize=2, symbolBrush='b')
+            self.curve1.setData(x = count_list, y = pressure_list, pen = 'r', shadowPen = 'r', symbol='o', symbolSize=1.5, symbolBrush='r')
+            self.curve2.setData(x = count_list_2, y = flow_list, pen = 'b', shadowPen = 'b', symbol='x', symbolSize=1.5, symbolBrush='b')
         except:
-            self.curve1.setData(x = count_list, y = 0.00, pen = 'r', symbol='o', symbolSize=2, symbolBrush='r')
-            self.curve2.setData(x = count_list_2, y = 0.00, pen = 'b', symbol='x', symbolSize=2, symbolBrush='b')
-        self.ct = self.ct + 1
+            self.curve1.setData(x = count_list, y = 0.00, pen = 'r', symbol='o', symbolSize=1.5, symbolBrush='r')
+            self.curve2.setData(x = count_list_2, y = 0.00, pen = 'b', symbol='x', symbolSize=1.5, symbolBrush='b')
 
     def closeEvent(self, event):
         """

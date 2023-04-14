@@ -42,29 +42,35 @@ class Vision130Driver:
         data = self._socket_comm(header + message + bytes(cs, 'utf-8') + self.eol)
 
     def get_all_float(self,):
-        header= [0xd6, 0x73, 0x65, 0x00, 0x08, 0x00]
-        header = bytes(header)
-        message = b'/00RNF000018'
-        cs = self._calc_checksum(message)
-        data = self._socket_comm(header + message + bytes(cs, 'utf-8') + self.eol)
+        try:
+            header= [0xd6, 0x73, 0x65, 0x00, 0x08, 0x00]
+            header = bytes(header)
+            message = b'/00RNF000018'
+            cs = self._calc_checksum(message)
+            data = self._socket_comm(header + message + bytes(cs, 'utf-8') + self.eol)
+            
+            all_my_data = data.split('RN')
+            my_input = all_my_data[1]
+            # print(len(my_input))
+            dd = []
+            for i in range(0, len(my_input), 4):
+                dd.append(my_input[i:i+4])
+            # print (dd)
+            dd.pop(-1)
+            ee = []
+            for i, j in zip(dd[0::2], dd[1::2]):
+                ee.append(j+i) 
+            ff = []
+            for i in ee:
+                ff.append(struct.unpack('!f', bytes.fromhex(i))[0])
+            return(ff)
+        except:
+            # try to reconnect
+            self.close_comm()
+            self.__init__(str(os.getenv('BPC_SERVER')), '20256')
+            return 0
         
-        all_my_data = data.split('RN')
-        my_input = all_my_data[1]
-        # print(len(my_input))
-        dd = []
-        for i in range(0, len(my_input), 4):
-            dd.append(my_input[i:i+4])
-        # print (dd)
-        dd.pop(-1)
-        ee = []
-        for i, j in zip(dd[0::2], dd[1::2]):
-            ee.append(j+i) 
-        ff = []
-        for i in ee:
-            ff.append(struct.unpack('!f', bytes.fromhex(i))[0])
-        # print (ff)
-        return(ff)
-
+    
     def _calc_checksum(self, message):
         msg_list = [*message]
         mysum = 0

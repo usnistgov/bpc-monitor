@@ -19,4 +19,6 @@ CHANGELOG       =       """
                         033023: Remove configparser and config.ini, use env variables for server address
                         040223: Set default server if address not found in environment, reset minute timer in plot
                                 after every 24 hrs.
+                        041323: Change plt axis to show local time, if server rejects connection then close and restart the socket
+                                connection, add clear plot button, add plot history option, update version string to 0.3
                         """

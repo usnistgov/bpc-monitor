@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>410</width>
-    <height>229</height>
+    <height>250</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -48,7 +48,6 @@ background-color: rgb(125, 125, 125, 55);</string>
      <font>
       <family>MS Shell Dlg 2</family>
       <pointsize>13</pointsize>
-      <weight>50</weight>
       <bold>false</bold>
      </font>
     </property>
@@ -84,7 +83,7 @@ color: rgb(255, 255, 255);</string>
       <x>5</x>
       <y>44</y>
       <width>401</width>
-      <height>181</height>
+      <height>201</height>
      </rect>
     </property>
     <property name="sizePolicy">
@@ -99,7 +98,7 @@ color: rgb(255, 255, 255);</string>
        <x>175</x>
        <y>-1</y>
        <width>221</width>
-       <height>91</height>
+       <height>101</height>
       </rect>
      </property>
      <property name="sizePolicy">
@@ -123,7 +122,7 @@ color: rgb(255, 255, 255);</string>
       <enum>Qt::LeftToRight</enum>
      </property>
      <property name="styleSheet">
-      <string notr="true">background-color: rgb(0, 0, 0);</string>
+      <string notr="true">background-color: rgb(240, 240, 240);</string>
      </property>
      <property name="frameShape">
       <enum>QFrame::NoFrame</enum>
@@ -279,7 +278,6 @@ color: rgb(0, 170, 0);</string>
       <property name="font">
        <font>
         <pointsize>10</pointsize>
-        <weight>50</weight>
         <bold>false</bold>
        </font>
       </property>
@@ -303,7 +301,6 @@ color: rgb(255, 0, 0);</string>
       <property name="font">
        <font>
         <pointsize>10</pointsize>
-        <weight>50</weight>
         <bold>false</bold>
        </font>
       </property>
@@ -370,7 +367,6 @@ color: rgb(0, 170, 0);</string>
       <property name="font">
        <font>
         <pointsize>10</pointsize>
-        <weight>50</weight>
         <bold>false</bold>
        </font>
       </property>
@@ -443,7 +439,6 @@ color: rgb(0, 170, 0);</string>
       <property name="font">
        <font>
         <pointsize>10</pointsize>
-        <weight>50</weight>
         <bold>false</bold>
        </font>
       </property>
@@ -460,9 +455,9 @@ color: rgb(0, 0, 0);</string>
      <property name="geometry">
       <rect>
        <x>175</x>
-       <y>90</y>
+       <y>100</y>
        <width>221</width>
-       <height>91</height>
+       <height>101</height>
       </rect>
      </property>
      <property name="sizePolicy">
@@ -486,7 +481,7 @@ color: rgb(0, 0, 0);</string>
       <enum>Qt::LeftToRight</enum>
      </property>
      <property name="styleSheet">
-      <string notr="true">background-color: rgb(0, 0, 0);</string>
+      <string notr="true">background-color: rgb(240, 240, 240);</string>
      </property>
      <property name="frameShape">
       <enum>QFrame::NoFrame</enum>
@@ -501,8 +496,8 @@ color: rgb(0, 0, 0);</string>
     <widget class="QPushButton" name="btn_quit">
      <property name="geometry">
       <rect>
-       <x>50</x>
-       <y>140</y>
+       <x>90</x>
+       <y>170</y>
        <width>75</width>
        <height>24</height>
       </rect>
@@ -510,7 +505,6 @@ color: rgb(0, 0, 0);</string>
      <property name="font">
       <font>
        <pointsize>10</pointsize>
-       <weight>75</weight>
        <bold>true</bold>
       </font>
      </property>
@@ -522,10 +516,69 @@ color: rgb(255, 255, 255);</string>
       <string>QUIT</string>
      </property>
     </widget>
+    <widget class="QPushButton" name="btn_clr_plots">
+     <property name="geometry">
+      <rect>
+       <x>90</x>
+       <y>140</y>
+       <width>75</width>
+       <height>24</height>
+      </rect>
+     </property>
+     <property name="font">
+      <font>
+       <pointsize>10</pointsize>
+       <bold>true</bold>
+      </font>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">background-color: rgb(0, 170, 0);
+color: rgb(255, 255, 255);</string>
+     </property>
+     <property name="text">
+      <string>CLR PLOTS</string>
+     </property>
+    </widget>
+    <widget class="QComboBox" name="cb_plt_hist">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>160</y>
+       <width>61</width>
+       <height>22</height>
+      </rect>
+     </property>
+     <property name="font">
+      <font>
+       <pointsize>11</pointsize>
+      </font>
+     </property>
+    </widget>
+    <widget class="QLabel" name="lbl_plt_hist">
+     <property name="geometry">
+      <rect>
+       <x>8</x>
+       <y>140</y>
+       <width>71</width>
+       <height>20</height>
+      </rect>
+     </property>
+     <property name="font">
+      <font>
+       <pointsize>10</pointsize>
+      </font>
+     </property>
+     <property name="text">
+      <string>Plot history</string>
+     </property>
+    </widget>
     <zorder>main_frame</zorder>
     <zorder>pw</zorder>
     <zorder>pw_2</zorder>
     <zorder>btn_quit</zorder>
+    <zorder>btn_clr_plots</zorder>
+    <zorder>cb_plt_hist</zorder>
+    <zorder>lbl_plt_hist</zorder>
    </widget>
    <zorder>widget</zorder>
    <zorder>label</zorder>
