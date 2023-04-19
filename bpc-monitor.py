@@ -78,7 +78,7 @@ __version__ = "0.3" # Program version string
 MAIN_THREAD_POLL = 1000 # in ms
 He_EXP_RATIO = 1./757 # liquid to gas expansion ratio for Helium at RT
 WIDTH = 410
-HEIGHT= 250
+HEIGHT= 270
 HIST = 24
 os.chdir(base_dir)
 # load the main ui file
@@ -180,7 +180,7 @@ class mainWindow(QMainWindow, main_file):
         quit_action.triggered.connect(self._exit_app)
         hide_action.triggered.connect(self.hide)
         
-        self.cb_plt_hist.addItems(['1 min', ' 5 min', '1 hr', '2 hr', '12 hr', '1 d'])
+        self.cb_plt_hist.addItems(['1 min', '5 min', '1 hr', '2 hr', '12 hr', '1 d', '2 d', '1 w'])
         self.cb_plt_hist.setCurrentText('1 hr')
         self.cb_plt_hist.activated.connect(self.set_plot_history)
         
@@ -220,6 +220,15 @@ class mainWindow(QMainWindow, main_file):
         We also use this to update the filename of the data file
         """
         try:
+            up = datetime.timedelta(seconds=(time.time() - self.start_time))
+            days = int((up.days))
+            print (up, up.seconds, up.days)
+            hours = int((up.seconds/3600)%24)
+            mins = int((up.seconds/60)%60)
+            secs = int(up.seconds%60)
+            #print (days, hours, mins, secs)
+            self.le_uptime.setText(str(days) + 'd, ' + str(hours) + \
+                                  ':' + str(mins) + ':' + str(secs))
             if not mthread.isRunning():
                 logger.info("In function: " + inspect.stack()[0][3])
                 mthread.start()
@@ -244,6 +253,10 @@ class mainWindow(QMainWindow, main_file):
             HIST = 2
         elif plt_history == '1 d':
             HIST = 1
+        elif plt_history == '2 d':
+            HIST = 0.5
+        elif plt_history == '1 w':
+            HIST = 0.143
         self.data_pressure = deque(maxlen=int(86400/(HIST*MAIN_THREAD_POLL*1e-3)))
         self.data_flow = deque(maxlen=int(86400/(HIST*MAIN_THREAD_POLL*1e-3)))
         

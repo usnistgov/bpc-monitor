@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>410</width>
-    <height>250</height>
+    <height>270</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -83,7 +83,7 @@ color: rgb(255, 255, 255);</string>
       <x>5</x>
       <y>44</y>
       <width>401</width>
-      <height>201</height>
+      <height>221</height>
      </rect>
     </property>
     <property name="sizePolicy">
@@ -98,7 +98,7 @@ color: rgb(255, 255, 255);</string>
        <x>175</x>
        <y>-1</y>
        <width>221</width>
-       <height>101</height>
+       <height>111</height>
       </rect>
      </property>
      <property name="sizePolicy">
@@ -455,9 +455,9 @@ color: rgb(0, 0, 0);</string>
      <property name="geometry">
       <rect>
        <x>175</x>
-       <y>100</y>
+       <y>110</y>
        <width>221</width>
-       <height>101</height>
+       <height>111</height>
       </rect>
      </property>
      <property name="sizePolicy">
@@ -496,8 +496,8 @@ color: rgb(0, 0, 0);</string>
     <widget class="QPushButton" name="btn_quit">
      <property name="geometry">
       <rect>
-       <x>90</x>
-       <y>170</y>
+       <x>95</x>
+       <y>190</y>
        <width>75</width>
        <height>24</height>
       </rect>
@@ -519,8 +519,8 @@ color: rgb(255, 255, 255);</string>
     <widget class="QPushButton" name="btn_clr_plots">
      <property name="geometry">
       <rect>
-       <x>90</x>
-       <y>140</y>
+       <x>95</x>
+       <y>153</y>
        <width>75</width>
        <height>24</height>
       </rect>
@@ -543,8 +543,8 @@ color: rgb(255, 255, 255);</string>
      <property name="geometry">
       <rect>
        <x>10</x>
-       <y>160</y>
-       <width>61</width>
+       <y>155</y>
+       <width>71</width>
        <height>22</height>
       </rect>
      </property>
@@ -557,8 +557,8 @@ color: rgb(255, 255, 255);</string>
     <widget class="QLabel" name="lbl_plt_hist">
      <property name="geometry">
       <rect>
-       <x>8</x>
-       <y>140</y>
+       <x>10</x>
+       <y>135</y>
        <width>71</width>
        <height>20</height>
       </rect>
@@ -572,6 +572,49 @@ color: rgb(255, 255, 255);</string>
       <string>Plot history</string>
      </property>
     </widget>
+    <widget class="QLabel" name="lbl_uptime">
+     <property name="geometry">
+      <rect>
+       <x>20</x>
+       <y>172</y>
+       <width>41</width>
+       <height>20</height>
+      </rect>
+     </property>
+     <property name="font">
+      <font>
+       <pointsize>10</pointsize>
+      </font>
+     </property>
+     <property name="text">
+      <string>uptime </string>
+     </property>
+    </widget>
+    <widget class="QLineEdit" name="le_uptime">
+     <property name="geometry">
+      <rect>
+       <x>2</x>
+       <y>192</y>
+       <width>91</width>
+       <height>22</height>
+      </rect>
+     </property>
+     <property name="font">
+      <font>
+       <pointsize>10</pointsize>
+      </font>
+     </property>
+     <property name="layoutDirection">
+      <enum>Qt::RightToLeft</enum>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">background-color: rgb(0, 0, 0);
+color: rgb(0, 170, 0);</string>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignCenter</set>
+     </property>
+    </widget>
     <zorder>main_frame</zorder>
     <zorder>pw</zorder>
     <zorder>pw_2</zorder>
@@ -579,6 +622,8 @@ color: rgb(255, 255, 255);</string>
     <zorder>btn_clr_plots</zorder>
     <zorder>cb_plt_hist</zorder>
     <zorder>lbl_plt_hist</zorder>
+    <zorder>lbl_uptime</zorder>
+    <zorder>le_uptime</zorder>
    </widget>
    <zorder>widget</zorder>
    <zorder>label</zorder>
