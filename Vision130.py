@@ -1,9 +1,9 @@
 #! /usr/bin/env python
 
-import os, time
+import os
 import socket # for socket
-import sys
 import struct
+from numpy import NaN
 
 # message format: <STX><CC><ADDRESS><LENGTH><CRC><ETX>
 # <STX>: /, <CC>: command code, <CRC>: checksum, <ETX>: end transmission character
@@ -15,16 +15,20 @@ class Vision130Driver:
     
     def __init__(self, host, port):
         try:
+            
             self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.s.settimeout(1)
             print ("Socket successfully created")
-        except socket.error as err:
+        except Exception as err:
             print ("socket creation failed with error %s" %(err))
         self.eol = b'\r'
         try:
             self.s.connect((host, int(port)))
-        except socket.gaierror as e:
+        except Exception as e:
+            self.s.close()
             print ("Could not connect with socket-server (host/port error): %s" % e)
         except socket.error as e:
+            self.s.close()
             print ("Connection error: %s" % e)
 
     def get_id(self,):
@@ -68,7 +72,7 @@ class Vision130Driver:
             # try to reconnect
             self.close_comm()
             self.__init__(str(os.getenv('BPC_SERVER')), '20256')
-            return 0
+            return [NaN]*24
         
     
     def _calc_checksum(self, message):
@@ -85,4 +89,8 @@ class Vision130Driver:
         return (all_data)
     
     def close_comm(self,):
-        self.s.close()
+        try:
+            self.s.close()
+        except Exception as err:
+            print (str(err))
+            pass

@@ -1,6 +1,5 @@
 #! /usr/bin/env python
 import sys, os
-
 try:
     print("Using PyQt6...")
     os.environ["QT_API"] = "pyqt6"
@@ -19,9 +18,11 @@ except ImportError:
 
 import pyqtgraph as pg
 from collections import deque
-import time, datetime
+from datetime import datetime, timedelta
+from time import strftime, time
 import inspect, signal
 import Vision130
+from numpy import NaN
 
 #try:
 #    from configparser import ConfigParser
@@ -74,7 +75,7 @@ fmt = logging.Formatter('%(asctime)s : %(levelname)s : %(name)s : %(message)s')
 file_handler.setFormatter(fmt)
 logger.addHandler(file_handler)
 
-__version__ = "0.3" # Program version string
+__version__ = "0.4" # Program version string
 MAIN_THREAD_POLL = 1000 # in ms
 He_EXP_RATIO = 1./757 # liquid to gas expansion ratio for Helium at RT
 WIDTH = 410
@@ -109,10 +110,11 @@ class mainThread(QThread, QObject):
         logger.info("In function: " + inspect.stack()[0][3])
         try:
             bpc_rbv =  mybpc.get_all_float() # get all float data from the controller
+            
             return bpc_rbv
         except Exception as e:
             logger.info("In function: " + inspect.stack()[0][3] + ' ' + str(e))
-            return [0]*24
+            return [NaN]*24
         
 
     def run(self):
@@ -128,7 +130,10 @@ class mainThread(QThread, QObject):
             # print (all_rbv)
             self.update_data.emit(all_rbv)
             self.plot_temp.emit()
+            
         except Exception as e:
+            print ("In error", all_rbv)
+            self.update_data.emit(all_rbv)
             logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
             pass
 
@@ -148,12 +153,12 @@ class mainWindow(QMainWindow, main_file):
         self.tray_icon = None
         self.quit_flag = 0
         # self.ct = 0
-        self.timestamp = datetime.datetime.now()
+        self.timestamp = datetime.now()
         self.settings = QSettings("global_settings.ini", QSettings.Format.IniFormat)
         self.setupUi(self)
         self.timer = QTimer()
         self.plot_settings()
-        self.fname = datadir + '\\bpc_log_' + time.strftime("%Y%m%d") + '.txt'
+        self.fname = datadir + '\\bpc_log_' + strftime("%Y%m%d") + '.txt'
         self.data_pressure = deque(maxlen=int(86400/(HIST*MAIN_THREAD_POLL*1e-3))) # 
         self.data_flow = deque(maxlen=int(86400/(HIST*MAIN_THREAD_POLL*1e-3)))
 
@@ -185,7 +190,7 @@ class mainWindow(QMainWindow, main_file):
         self.cb_plt_hist.activated.connect(self.set_plot_history)
         
         logger.info ("In function: " + inspect.stack()[0][3])
-        self.start_time = time.time()
+        self.start_time = time()
 
     def show(self):
         """
@@ -207,7 +212,7 @@ class mainWindow(QMainWindow, main_file):
 
     def _getAllData(self, all_rbv):
          # print(all_rbv)
-         self.timestamp = datetime.datetime.now()
+         self.timestamp = datetime.now()
          self.lbl_pressure_rbv.setText(str(round(all_rbv[20], 3)))
          self.lbl_flow_rbv.setText(str(round(all_rbv[10], 3)))
          self.lbl_valve_rbv.setText(str(round(all_rbv[-1], 3)))
@@ -220,9 +225,8 @@ class mainWindow(QMainWindow, main_file):
         We also use this to update the filename of the data file
         """
         try:
-            up = datetime.timedelta(seconds=(time.time() - self.start_time))
+            up = timedelta(seconds=(time() - self.start_time))
             days = int((up.days))
-            print (up, up.seconds, up.days)
             hours = int((up.seconds/3600)%24)
             mins = int((up.seconds/60)%60)
             secs = int(up.seconds%60)
@@ -237,7 +241,7 @@ class mainWindow(QMainWindow, main_file):
                 mthread.stop()
             file_handler.close()
             self.close()
-        self.fname = datadir + '\\bpc_log_' + time.strftime("%Y%m%d") + '.txt'
+        self.fname = datadir + '\\bpc_log_' + strftime("%Y%m%d") + '.txt'
     
     def set_plot_history(self):
         plt_history = self.cb_plt_hist.currentText()
@@ -317,18 +321,19 @@ class mainWindow(QMainWindow, main_file):
             self.data_flow.append({'x':ct, 'y':float(flow),})
             # append the data to file
             with open(self.fname, 'a') as f:
-                f.write(str(self.timestamp) + '\t' + str(pressure) + '\t' + str(flow) + '\t' + str(valve) + '\n')
+                if str(pressure) != 'nan':
+                    f.write(str(self.timestamp) + '\t' + str(pressure) + '\t' + str(flow) + '\t' + str(valve) + '\n')
         count_list = [item['x'] for item in self.data_pressure]
         count_list_2 = [item['x'] for item in self.data_flow]
         pressure_list = [item['y'] for item in self.data_pressure]
         flow_list = [item['y'] for item in self.data_flow]
         #print (len(self.data_pressure), len(self.data_flow))
         try:
-            self.curve1.setData(x = count_list, y = pressure_list, pen = 'r', shadowPen = 'r', symbol='o', symbolSize=1.5, symbolBrush='r')
-            self.curve2.setData(x = count_list_2, y = flow_list, pen = 'b', shadowPen = 'b', symbol='x', symbolSize=1.5, symbolBrush='b')
+            self.curve1.setData(x = count_list, y = pressure_list, pen = 'r', shadowPen = 'r', symbol='o', symbolSize=1.5, symbolBrush='r', connect='finite')
+            self.curve2.setData(x = count_list_2, y = flow_list, pen = 'b', shadowPen = 'b', symbol='x', symbolSize=1.5, symbolBrush='b', connect='finite')
         except:
-            self.curve1.setData(x = count_list, y = 0.00, pen = 'r', symbol='o', symbolSize=1.5, symbolBrush='r')
-            self.curve2.setData(x = count_list_2, y = 0.00, pen = 'b', symbol='x', symbolSize=1.5, symbolBrush='b')
+            self.curve1.setData(x = count_list, y = 0.00, pen = 'r', symbol='o', symbolSize=1.5, symbolBrush='r', connect='finite')
+            self.curve2.setData(x = count_list_2, y = 0.00, pen = 'b', symbol='x', symbolSize=1.5, symbolBrush='b', connect='finite')
 
     def closeEvent(self, event):
         """
