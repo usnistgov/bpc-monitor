@@ -5,7 +5,7 @@ __maintainer__ 	=       "Alireza Panna"
 __email__ 	=       "alireza.panna@nist.gov"
 __status__ 	=       "Stable"
 __date__        =       "03/25/2023"
-__version__     =       "0.2"
+__version__     =       "0.7"
 
 TODO            =
 CHANGELOG       =       """
@@ -23,4 +23,6 @@ CHANGELOG       =       """
                                 connection, add clear plot button, add plot history option, update version string to 0.3
                         041423: Added uptime 
                         041723: Fixed day calculation in uptime, update version string to 0.4
+                        050223: Added a viewer to look at historic data logged by the bpc, added a non-overlapping moving
+                                average filter when user selects history >= 1 day so that the live graph does not stall the ui, upgrade to version 0.7.
                         """

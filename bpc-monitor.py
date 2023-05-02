@@ -1,28 +1,46 @@
 #! /usr/bin/env python
-import sys, os
+import sys
+from os import getenv, environ, chdir, sep, path, mkdir, getcwd, scandir
 try:
     print("Using PyQt6...")
-    os.environ["QT_API"] = "pyqt6"
+    environ["QT_API"] = "pyqt6"
     from PyQt6 import QtCore, uic, QtGui
     from PyQt6.QtCore import pyqtSignal, QTimer, QThread, QSettings, QObject
-    from PyQt6.QtWidgets import QApplication, QMainWindow, QSystemTrayIcon, QStyle, QMenu, QMessageBox
     from PyQt6.QtGui import QAction
+    from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,\
+                                QLabel, QPushButton, QComboBox,\
+                                QMessageBox, QMenu, QSystemTrayIcon, QStyle, QTabWidget,
+                                QFormLayout)
     pixmapi = QStyle.StandardPixmap.SP_TitleBarMenuButton
 except ImportError:
     print("Using PyQt5...")
-    os.environ["QT_API"] = "pyqt5"
+    environ["QT_API"] = "pyqt5"
     from PyQt5 import QtCore, uic, QtGui
     from PyQt5.QtCore import pyqtSignal, QTimer, QThread, QSettings, QObject
-    from PyQt5.QtWidgets import QApplication, QMainWindow, QSystemTrayIcon, QStyle, QAction, QMenu, QMessageBox
+    from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,\
+                                QLabel, QPushButton, QComboBox, \
+                                QMessageBox, QSystemTrayIcon, QStyle, QMenu, QAction, QTabWidget,
+                                QFormLayout)
     pixmapi = QStyle.SP_TitleBarMenuButton
 
 import pyqtgraph as pg
 from collections import deque
 from datetime import datetime, timedelta
-from time import strftime, time
+from time import strftime, time, perf_counter
 import inspect, signal
 import Vision130
-from numpy import NaN
+from numpy import NaN, mean, array
+
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg, NavigationToolbar2QT as NavigationToolbar
+from matplotlib.figure import Figure
+import matplotlib
+from matplotlib.dates import ConciseDateFormatter, AutoDateLocator
+import matplotlib.style as mplstyle
+import matplotlib.pyplot as plt
+
+from pandas import read_csv, concat, to_datetime
+
+
 
 #try:
 #    from configparser import ConfigParser
@@ -42,17 +60,17 @@ else:
         base_dir = os.path.dirname(os.path.abspath(__file__))
         running_mode = "Non-interactive (e.g. 'python bpc-monitor.py')"
     except NameError:
-        base_dir = os.getcwd()
+        base_dir = getcwd()
         running_mode = 'Interactive'
 
-datadir   = "C:" + os.sep + "_datacache_"
-logdir    = "C:" + os.sep + "_logcache_"
+datadir   = "C:" + sep + "_datacache_"
+logdir    = "C:" + sep + "_logcache_"
 #configdir = os.environ.get('USERPROFILE') + '\\.bpc'
 # create a folder to store data and log files
-if os.path.isdir(datadir) == False:
-    os.mkdir(datadir)  
-if os.path.isdir(logdir) == False:
-    os.mkdir(logdir)
+if path.isdir(datadir) == False:
+    mkdir(datadir)
+if path.isdir(logdir) == False:
+    mkdir(logdir)
 #if os.path.isdir(configdir) == False:
 #    try:
 #        os.mkdir(configdir)
@@ -69,21 +87,79 @@ logger = logging.getLogger(__name__)
 # set the log level
 logger.setLevel(logging.INFO)
 # define the file handler and formatting
-lfname = logdir + os.sep + 'bpc-monitor' + '.log'
+lfname = logdir + sep + 'bpc-monitor' + '.log'
 file_handler = TimedRotatingFileHandler(lfname, when='midnight')
 fmt = logging.Formatter('%(asctime)s : %(levelname)s : %(name)s : %(message)s')
 file_handler.setFormatter(fmt)
 logger.addHandler(file_handler)
 
-__version__ = "0.4" # Program version string
+__version__ = "0.7" # Program version string
 MAIN_THREAD_POLL = 1000 # in ms
 He_EXP_RATIO = 1./757 # liquid to gas expansion ratio for Helium at RT
-WIDTH = 410
-HEIGHT= 270
+WIDTH = 420
+HEIGHT= 310
 HIST = 24
-os.chdir(base_dir)
+chdir(base_dir)
 # load the main ui file
-main_file = uic.loadUiType(os.path.join(base_dir, 'ui\\main.ui'))[0]
+main_file = uic.loadUiType(path.join(base_dir, 'ui\\main.ui'))[0]
+
+mplstyle.use('fast')
+
+params = {
+           'axes.labelsize': 6,
+           'font.size': 6,
+           'xtick.labelsize': 5,
+           'ytick.labelsize': 5,
+           'text.usetex': False,
+           'figure.figsize': [5,2],
+           'figure.max_open_warning': 20,
+           'figure.facecolor': 'white',
+           'figure.edgecolor': 'white',
+           'figure.dpi': 100,
+           'axes.spines.top': True,
+           'axes.spines.bottom': True,
+           'axes.spines.left': True,
+           'axes.spines.right': True,
+           'lines.linewidth': 1.0,
+           'lines.markersize': 1.0,
+           'grid.color': 'gray',
+           'grid.linestyle': '-',
+           'grid.alpha': 0.6,
+           'grid.linewidth': 0.8,
+           'axes.formatter.use_mathtext' : True,
+           'legend.loc': 'best',
+           'legend.frameon': False,
+           'legend.fontsize': 5,
+           'markers.fillstyle': 'none',
+           'xtick.direction':   'in',     # direction: {in, out, inout}
+           'ytick.direction':   'in',     # direction: {in, out, inout}
+           'savefig.dpi': 300,
+           'figure.raise_window' : True
+          }
+
+plt.rc('axes', linewidth = 2)
+plt.rc('font', family = 'serif')
+matplotlib.rcParams.update(params)
+
+class MplCanvas(FigureCanvasQTAgg):
+
+    def __init__(self, parent=None, width=5, height=2, dpi=100):
+        self.fig = Figure(figsize=(width, height), dpi=dpi)
+        self.ax1 = self.fig.add_subplot(111)
+        self.ax_settings()
+        super(MplCanvas, self).__init__(self.fig)
+
+    def ax_settings(self, ):
+        logger.info ('In function: ' + inspect.stack()[0][3])
+        locator =   AutoDateLocator(minticks=5, maxticks=5)
+        date_form = ConciseDateFormatter(locator)
+        self.ax1.xaxis.set_major_formatter(date_form)
+        self.ax1.tick_params(axis='x', labelrotation = 45)
+        self.ax1.set_ylabel('lHe rec. (l/d)')
+        self.ax1.set_xlabel('Date')
+        
+        self.fig.canvas.draw()
+        self.fig.tight_layout(pad=0.4, w_pad=1, h_pad=1.0)
 
 class mainThread(QThread, QObject):
     # define the signals that this thread calls
@@ -94,7 +170,7 @@ class mainThread(QThread, QObject):
         """
         Constructor for the main thread
         """
-        logger.info("In function: " + inspect.stack()[0][3])
+        #logger.info("In function: " + inspect.stack()[0][3])
         QtCore.QThread.__init__(self)
         QtCore.QObject.__init__(self)
         self.setTerminationEnabled(True)
@@ -104,18 +180,16 @@ class mainThread(QThread, QObject):
         Destructor for the main thread, handles thread termination
         """
         self.wait()
-        logger.info("In function: " + inspect.stack()[0][3])
+        #logger.info("In function: " + inspect.stack()[0][3])
 
     def _getRbvs(self,):
-        logger.info("In function: " + inspect.stack()[0][3])
+        #logger.info("In function: " + inspect.stack()[0][3])
         try:
             bpc_rbv =  mybpc.get_all_float() # get all float data from the controller
-            
             return bpc_rbv
         except Exception as e:
             logger.info("In function: " + inspect.stack()[0][3] + ' ' + str(e))
             return [NaN]*24
-        
 
     def run(self):
         """
@@ -125,14 +199,13 @@ class mainThread(QThread, QObject):
           MAIN_THREAD_POLL
         """
         try:
-            logger.info("In function: " + inspect.stack()[0][3])
+            #logger.info("In function: " + inspect.stack()[0][3])
             all_rbv = self._getRbvs()
             # print (all_rbv)
             self.update_data.emit(all_rbv)
             self.plot_temp.emit()
-            
+
         except Exception as e:
-            print ("In error", all_rbv)
             self.update_data.emit(all_rbv)
             logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
             pass
@@ -141,17 +214,27 @@ class mainThread(QThread, QObject):
         """
         Stops the main thread
         """
-        logger.info("In function: " + inspect.stack()[0][3])
+        #logger.info("In function: " + inspect.stack()[0][3])
         file_handler.close()
         self.quit()
 
-class mainWindow(QMainWindow, main_file):
+class mainWindow(QTabWidget, main_file):
 
     def __init__(self):
-        QMainWindow.__init__(self)
+        global HIST
+        global MAIN_THREAD_POLL
+        QTabWidget.__init__(self)
+        # self.tab1 = QWidget()
+        self.tab2 = QWidget()
+        self.addTab(self.tab2,"History")
+        # self.addTab(self.tab1, "Logger")
+        self.sc = MplCanvas(self, width=5, height=2, dpi=180)
+        # self.tab1UI()
+        self.tab2UI()
         self.setFixedSize(WIDTH, HEIGHT)
         self.tray_icon = None
         self.quit_flag = 0
+        self.draw_bpc_flag = 0
         # self.ct = 0
         self.timestamp = datetime.now()
         self.settings = QSettings("global_settings.ini", QSettings.Format.IniFormat)
@@ -159,7 +242,7 @@ class mainWindow(QMainWindow, main_file):
         self.timer = QTimer()
         self.plot_settings()
         self.fname = datadir + '\\bpc_log_' + strftime("%Y%m%d") + '.txt'
-        self.data_pressure = deque(maxlen=int(86400/(HIST*MAIN_THREAD_POLL*1e-3))) # 
+        self.data_pressure = deque(maxlen=int(86400/(HIST*MAIN_THREAD_POLL*1e-3))) #
         self.data_flow = deque(maxlen=int(86400/(HIST*MAIN_THREAD_POLL*1e-3)))
 
         mthread.update_data.connect(self._getAllData)
@@ -184,20 +267,198 @@ class mainWindow(QMainWindow, main_file):
         show_action.triggered.connect(self.show)
         quit_action.triggered.connect(self._exit_app)
         hide_action.triggered.connect(self.hide)
-        
-        self.cb_plt_hist.addItems(['1 min', '5 min', '1 hr', '2 hr', '12 hr', '1 d', '2 d', '1 w'])
+
+        self.cb_plt_hist.addItems(['1 min', '5 min', '1 hr', '2 hr', '12 hr', '1 d', '2 d', '1 w', '1 m', '1 y'])
         self.cb_plt_hist.setCurrentText('1 hr')
         self.cb_plt_hist.activated.connect(self.set_plot_history)
-        
+        self.plt_history = self.cb_plt_hist.currentText()
+
         logger.info ("In function: " + inspect.stack()[0][3])
         self.start_time = time()
+        
+    def tab1UI(self, ):
+        """
+        not used
+        """
+        layout = QFormLayout()
+        self.lbl_pressure = QLabel('P [mbar]')
+        self.lbl_pressure_rbv = QLabel()
+        
+        layout.addWidget(self.lbl_pressure)
+        layout.addWidget(self.lbl_pressure_rbv)
+        self.tab1.setLayout(layout)
+
+    def tab2UI(self, ):
+        layout = QVBoxLayout()
+        layout2 = QHBoxLayout()
+        toolbar = NavigationToolbar(self.sc, self)
+        self.lbl_time = QLabel('HISTORY: ')
+        self.cb_time = QComboBox()
+        self.cb_time.addItems(['last 48 hrs', 'last week', \
+                               'last month', 'last six months', 'last year', \
+                               'all'])
+        self.cb_time.setCurrentText('last 48 hrs')
+        self.cb_time.setFixedWidth(100)
+        self.cb_time.setFixedHeight(20)
+
+        # combo box to resample data
+        self.lbl_resample = QLabel('BINNING: ')
+        self.lbl_resample.setFixedHeight(40)
+        self.cb_resample = QComboBox()
+        self.cb_resample.addItems(['1S', '10S', '30S', '1min', '30min', '1H', \
+                                   '2H', '12H', '1D', '1W', '2W', '1M'])
+        self.cb_resample.setCurrentText('1min')
+        self.cb_resample.setFixedHeight(20)
+        self.cb_resample.setFixedWidth(60)
+
+        self.binsize = self.cb_resample.currentText()
+
+        self.btn_plot = QPushButton('PLOT', self)
+        self.btn_plot.setToolTip('Plot/Re-plot the data')
+        self.btn_plot.setFixedHeight(20)
+        self.btn_plot.setFixedWidth(100)
+        self.btn_plot.clicked.connect(self.plot_my_data)
+
+        layout2.addWidget(self.lbl_time)
+        layout2.addWidget(self.cb_time)
+        layout2.addWidget(self.lbl_resample)
+        layout2.addWidget(self.cb_resample)
+        layout2.addWidget(self.btn_plot)
+        layout2.addStretch(1)
+        layout.addWidget(toolbar)
+        layout.addLayout(layout2)
+        layout.addWidget(self.sc)
+        self.tab2.setLayout(layout)
+
+    def plot_my_data(self,):
+        self.btn_plot.setEnabled(False)
+        self.df_bpcCtrl = self.get_my_data()
+        self.redraw()
+        self.btn_plot.setEnabled(True)
+
+    def _read_helper(self, filename,):
+        """
+        helper function for get_data
+        """
+        try:
+            mydata = []
+            headers = ['Date', 'Pressure', 'Flow', 'Valve']
+            mydata.append(read_csv(filename, sep='\t', dtype={0:"str", 1: "float16", 2:"float16", 3:"float16"}, \
+                                          on_bad_lines='skip', na_filter=True, index_col=False, memory_map=True, \
+                                          usecols=[0,1,2,3], engine='c', names=headers, na_values='nan'))
+            return mydata
+        except Exception as e:
+            print(filename, e)
+
+    # @functools.lru_cache(maxsize=128)
+    def get_my_data(self,):
+        global datadir
+        mydata = []
+        data   = []
+        get_data_start = perf_counter()
+        try:
+            i = 0
+            for filename in scandir(datadir + '\\'):
+                self.filename = filename.name
+                
+                if filename.name != '':
+                    if self.cb_time.currentText() == 'all':
+                        mydata.append(self._read_helper(datadir + sep + filename.name))
+
+                    elif self.cb_time.currentText() == 'last year':
+                        fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
+                        delta_time = (datetime.now() - fname_date).total_seconds()
+                        if (float(delta_time) <= 3.1556952*1e7):
+                            mydata.append(self._read_helper(datadir + sep + filename.name))
+
+                    elif self.cb_time.currentText() == 'last six months':
+                        fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
+                        delta_time = (datetime.now() - fname_date).total_seconds()
+                        if (float(delta_time) <= 1.578*1e7):
+                            mydata.append(self._read_helper(datadir + sep + filename.name))
+                            # print (filename.name, mydata)
+                    elif self.cb_time.currentText() == 'last month':
+                        fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
+                        delta_time = (datetime.now() - fname_date).total_seconds()
+                        if (float(delta_time) <= 2.63*1e6):
+                            mydata.append(self._read_helper(datadir + sep + filename.name))
+                            # print (filename.name, mydata)
+                    elif self.cb_time.currentText() == 'last week':
+                        fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
+                        delta_time = (datetime.now() - fname_date).total_seconds()
+                        if (float(delta_time) <= 604800):
+                            mydata.append(self._read_helper(datadir + sep + filename.name))
+
+                    elif self.cb_time.currentText() == 'last 48 hrs':
+                        fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
+                        delta_time = (datetime.now() - fname_date).total_seconds()
+                        if (float(delta_time) <= 172800):
+                            mydata.append(self._read_helper(datadir + sep + filename.name))
+
+                    else:
+                        mydata.append(self._read_helper(datadir + sep + filename.name))
+        except:
+            logger.info('Error reading file/getting data in filename: ' + str(self.filename) + ' ' + str(inspect.stack()[0][3]))
+            pass
+        get_data_end = perf_counter() - get_data_start
+        logger.info("Time taken to get data: " +  str(get_data_end))
+
+        for i in mydata:
+            data.extend(i)
+        self.binsize = self.cb_resample.currentText()
+        if data != []:
+            dfc = concat(data, ignore_index=True)
+            dfc['Date'] = to_datetime(dfc['Date'])
+            dfc.insert(4, "lHe Rec.", dfc['Flow']*60*24/(1./He_EXP_RATIO))
+            dfc.set_index('Date', inplace=True)
+            # print (dfc.head(5))
+            resample_dfc = dfc.resample(self.binsize, axis=0, closed='left', label='left').mean()
+            resample_dfc.dropna(axis=0, inplace=True)
+            resample_dfc['Date'] = resample_dfc.index
+            return (resample_dfc)
+        else:
+            return 0
+
+    def redraw(self,):
+        redraw_start = perf_counter()
+        self.plot_history_data()
+        self.sc.flush_events()
+        self.sc.draw_idle()
+        self.finish_work = perf_counter()
+        logger.info('Time taken plot the data and draw canvas: ' + \
+                    str(perf_counter() - redraw_start) + '\n')
+
+    def plot_history_data(self, ):
+        logger.info ('In function: ' + inspect.stack()[0][3])
+        try:
+            if self.draw_bpc_flag == 1:
+                self.plot1_ref[0].set_data(self.df_bpcCtrl['Date'], self.df_bpcCtrl['lHe Rec.'])
+            else:
+                self.plot1_ref = self.sc.ax1.plot(self.df_bpcCtrl['Date'], self.df_bpcCtrl['lHe Rec.'], ms=0.2, \
+                                                  c='green', alpha=0.7, marker='o', ls='', label='')
+                # self.sc.ax1.legend(loc = 'upper right', frameon=True)
+            self.draw_bpc_flag = 1
+
+        except Exception as e:
+            logger.info('Error in function: ' + inspect.stack()[0][3] + ' ' + str(e))
+            if self.plot1_ref != None or self.plot8_ref != None:
+                self.plot1_ref[0].remove()
+                self.plot1_ref = None
+            self.draw_bpc_flag = 0
+            pass
+        self.sc.ax1.relim()
+        self.sc.ax1.autoscale(tight=None, axis='both', enable=True)
+        self.sc.ax1.autoscale_view(tight=None, scalex=True, scaley=True)
 
     def show(self):
         """
         Show the main window and connect to signals coming from various threads
         """
+        global MAIN_THREAD_POLL
         logger.info("In function: " + inspect.stack()[0][3])
         QMainWindow.show(self)
+        self.sc.fig.tight_layout()
+        # self.timer.setTimerType(QtCore.Qt.PreciseTimer)
         self.timer.timeout.connect(self.checkMainThread)
         # run the main thread every 1s
         self.timer.start(MAIN_THREAD_POLL)
@@ -206,7 +467,7 @@ class mainWindow(QMainWindow, main_file):
         """
         Helper function to exit from system tray
         """
-        logger.info("In function: " + inspect.stack()[0][3])
+        #logger.info("In function: " + inspect.stack()[0][3])
         self.quit_flag = 1
         self.quit()
 
@@ -216,7 +477,7 @@ class mainWindow(QMainWindow, main_file):
          self.lbl_pressure_rbv.setText(str(round(all_rbv[20], 3)))
          self.lbl_flow_rbv.setText(str(round(all_rbv[10], 3)))
          self.lbl_valve_rbv.setText(str(round(all_rbv[-1], 3)))
-         rec = round(all_rbv[10]*60*24/(1/He_EXP_RATIO), 3)
+         rec = round(all_rbv[10]*60*24/(1./He_EXP_RATIO), 3)
          self.lbl_rec_rbv.setText(str(rec))
 
     def checkMainThread(self):
@@ -234,38 +495,47 @@ class mainWindow(QMainWindow, main_file):
             self.le_uptime.setText(str(days) + 'd, ' + str(hours) + \
                                   ':' + str(mins) + ':' + str(secs))
             if not mthread.isRunning():
-                logger.info("In function: " + inspect.stack()[0][3])
+                #logger.info("In function: " + inspect.stack()[0][3])
                 mthread.start()
-        except KeyboardInterrupt:
+        except Exception as e:
+            logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
             if mthread.isRunning():
                 mthread.stop()
             file_handler.close()
             self.close()
         self.fname = datadir + '\\bpc_log_' + strftime("%Y%m%d") + '.txt'
-    
+
     def set_plot_history(self):
-        plt_history = self.cb_plt_hist.currentText()
-        if plt_history == '1 min':
+        global HIST
+        global MAIN_THREAD_POLL
+        self.plt_history = self.cb_plt_hist.currentText()
+        if self.plt_history == '1 min':
             HIST = 1440
-        elif plt_history == '5 min':
+        elif self.plt_history == '5 min':
             HIST = 288
-        elif plt_history == '1 hr':
+        elif self.plt_history == '1 hr':
             HIST = 24
-        elif plt_history == '2 hr':
+        elif self.plt_history == '2 hr':
             HIST = 12
-        elif plt_history == '12 hr':
+        elif self.plt_history == '12 hr':
             HIST = 2
-        elif plt_history == '1 d':
-            HIST = 1
-        elif plt_history == '2 d':
-            HIST = 0.5
-        elif plt_history == '1 w':
-            HIST = 0.143
+        elif self.plt_history == '1 d':
+            HIST = 2
+        elif self.plt_history == '2 d':
+            HIST = 2
+        elif self.plt_history == '1 w':
+            HIST = 2
+        elif self.plt_history == ' 1 m':
+            HIST = 2
+        elif self.plt_history == ' 1 y':
+            HIST = 2
         self.data_pressure = deque(maxlen=int(86400/(HIST*MAIN_THREAD_POLL*1e-3)))
         self.data_flow = deque(maxlen=int(86400/(HIST*MAIN_THREAD_POLL*1e-3)))
-        
+
     def clear_plots(self):
-        logger.info("In function: " + inspect.stack()[0][3])
+        global HIST
+        global MAIN_THREAD_POLL
+        #logger.info("In function: " + inspect.stack()[0][3])
         try:
             # clear/redefine the tuples
             self.data_pressure = deque(maxlen=int(86400/(HIST*MAIN_THREAD_POLL*1e-3)))
@@ -277,7 +547,7 @@ class mainWindow(QMainWindow, main_file):
         """
         Initial settings for plot items
         """
-        logger.info("In function: " + inspect.stack()[0][3])
+        #logger.info("In function: " + inspect.stack()[0][3])
         labelStyle_y1 = {'color': 'red', 'font-size': '8pt'}
         labelStyle_y2 = {'color': 'blue', 'font-size': '8pt'}
         labelStyle_x = {'color': 'black', 'font-size': '8pt'}
@@ -286,7 +556,7 @@ class mainWindow(QMainWindow, main_file):
         self.pw.setBackground((0,0,0,240))
         self.pw_2.setBackground((0,0,0,240))
         self.pw.plotItem.setLabel(axis='left', text='P', units= 'mbar', **labelStyle_y1)
-        self.pw_2.plotItem.setLabel(axis='left', text='Flow', units= 'l/min',  **labelStyle_y2)
+        self.pw_2.plotItem.setLabel(axis='left', text='lHe Rec.', units= 'l/day',  **labelStyle_y2)
         self.pw_2.plotItem.setLabel(axis='bottom', text = 'time', units= 'HH:MM:SS', **labelStyle_x)
         self.pw.plotItem.showGrid(x=True, y=False)
         self.pw_2.plotItem.showGrid(x=True, y=False)
@@ -306,41 +576,75 @@ class mainWindow(QMainWindow, main_file):
         self.curve1 = self.pw.plot()
         self.curve2 = self.pw_2.plot()
 
+    def _average(self, arr, n):
+        n = int(n)
+        binned = []
+        co=0
+        if len(arr) == 1:
+            return (arr)
+        while co < len(arr):
+            binned.append(mean(arr[co:co+n]))
+            co = co+n
+        return(binned)
+
     @QtCore.pyqtSlot()
     def plot_data(self):
-
-        logger.info("In function: " + inspect.stack()[0][3])
+        global HIST
+        #logger.info("In function: " + inspect.stack()[0][3])
         # convert datetime object to timestamp
         ct = self.timestamp.timestamp()
         pressure = self.lbl_pressure_rbv.text()
         flow = self.lbl_flow_rbv.text()
+        rec = self.lbl_rec_rbv.text()
         valve = self.lbl_valve_rbv.text()
 
         if pressure != '0':
             self.data_pressure.append({'x':ct, 'y':float(pressure),})
-            self.data_flow.append({'x':ct, 'y':float(flow),})
-            # append the data to file
+            self.data_flow.append({'x':ct, 'y':float(rec),})
             with open(self.fname, 'a') as f:
                 if str(pressure) != 'nan':
                     f.write(str(self.timestamp) + '\t' + str(pressure) + '\t' + str(flow) + '\t' + str(valve) + '\n')
-        count_list = [item['x'] for item in self.data_pressure]
-        count_list_2 = [item['x'] for item in self.data_flow]
+        ct_list = [item['x'] for item in self.data_flow]
         pressure_list = [item['y'] for item in self.data_pressure]
         flow_list = [item['y'] for item in self.data_flow]
-        #print (len(self.data_pressure), len(self.data_flow))
+        # print ('before: ', len(pressure_list))
+        if self.plt_history == '1 d':
+            ct_list = self._average(array(ct_list), HIST)
+            pressure_list = self._average(array(pressure_list), HIST)
+            flow_list = self._average(array(flow_list), HIST)
+        if self.plt_history == '2 d':
+            ct_list = self._average(array(ct_list), 2*HIST)
+            pressure_list = self._average(array(pressure_list), 2*HIST)
+            flow_list = self._average(array(flow_list), 2*HIST)
+        if self.plt_history == '1 w':
+            ct_list = self._average(array(ct_list), 7*HIST)
+            pressure_list = self._average(array(pressure_list), 7*HIST)
+            flow_list = self._average(array(flow_list), 7*HIST)
+        if self.plt_history == '1 m':
+            ct_list = self._average(array(ct_list), 30*HIST)
+            pressure_list = self._average(array(pressure_list), 30*HIST)
+            flow_list = self._average(array(flow_list), 30*HIST)
+        if self.plt_history == '1 y':
+            ct_list = self._average(array(ct_list), 365*HIST)
+            pressure_list = self._average(array(pressure_list), 365*HIST)
+            flow_list = self._average(array(flow_list), 365*HIST)
+        # count_list = range(len(pressure_list))
+        # count_list_2 = range(len(flow_list))
+        # print ('after: ', len(pressure_list))
+
         try:
-            self.curve1.setData(x = count_list, y = pressure_list, pen = 'r', shadowPen = 'r', symbol='o', symbolSize=1.5, symbolBrush='r', connect='finite')
-            self.curve2.setData(x = count_list_2, y = flow_list, pen = 'b', shadowPen = 'b', symbol='x', symbolSize=1.5, symbolBrush='b', connect='finite')
+            self.curve1.setData(x = ct_list, y = pressure_list, pen = 'r', shadowPen = 'r', symbol='o', symbolSize=1.5, symbolBrush='r', connect='finite')
+            self.curve2.setData(x = ct_list, y = flow_list, pen = 'b', shadowPen = 'b', symbol='x', symbolSize=1.5, symbolBrush='b', connect='finite')
         except:
-            self.curve1.setData(x = count_list, y = 0.00, pen = 'r', symbol='o', symbolSize=1.5, symbolBrush='r', connect='finite')
-            self.curve2.setData(x = count_list_2, y = 0.00, pen = 'b', symbol='x', symbolSize=1.5, symbolBrush='b', connect='finite')
+            self.curve1.setData(x = ct_list, y = 0.00, pen = 'r', symbol='o', symbolSize=1.5, symbolBrush='r', connect='finite')
+            self.curve2.setData(x = ct_list, y = 0.00, pen = 'b', symbol='x', symbolSize=1.5, symbolBrush='b', connect='finite')
 
     def closeEvent(self, event):
         """
         Handle 'X' event to minimize to system icon tray instead of closing
         Override the close event to minimize to system tray
         """
-        logger.info("In function: " + inspect.stack()[0][3])
+        #logger.info("In function: " + inspect.stack()[0][3])
         if self.quit_flag == 0:
             self.hide()
             self.tray_icon.showMessage(
@@ -366,7 +670,7 @@ class mainWindow(QMainWindow, main_file):
         """
         Quit the application
         """
-        logger.info("In function: " + inspect.stack()[0][3])
+        #logger.info("In function: " + inspect.stack()[0][3])
         if self.quit_flag == 0:
             reply = QMessageBox.question(
             self, "Message",
@@ -419,7 +723,7 @@ if __name__ == '__main__':
     #config.read(config_path)
     # Initialize all the hardware used for this application
     try:
-        myserver = str(os.getenv('BPC_SERVER'))
+        myserver = str(getenv('BPC_SERVER'))
     except:
         myserver = '172.30.33.212'
     mybpc = Vision130.Vision130Driver(myserver, '20256')
