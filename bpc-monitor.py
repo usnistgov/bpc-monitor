@@ -1,8 +1,7 @@
 #! /usr/bin/env python
-import sys
+import sys, functools
 from os import getenv, environ, chdir, sep, path, mkdir, getcwd, scandir
 try:
-    print("Using PyQt6...")
     environ["QT_API"] = "pyqt6"
     from PyQt6 import QtCore, uic, QtGui
     from PyQt6.QtCore import pyqtSignal, QTimer, QThread, QSettings, QObject
@@ -13,7 +12,6 @@ try:
                                 QFormLayout)
     pixmapi = QStyle.StandardPixmap.SP_TitleBarMenuButton
 except ImportError:
-    print("Using PyQt5...")
     environ["QT_API"] = "pyqt5"
     from PyQt5 import QtCore, uic, QtGui
     from PyQt5.QtCore import pyqtSignal, QTimer, QThread, QSettings, QObject
@@ -28,9 +26,10 @@ from collections import deque
 from datetime import datetime, timedelta
 from time import strftime, time, perf_counter
 import inspect, signal
+# controller class
 import Vision130
 from numpy import NaN, mean, array
-
+# matplotlib imports
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg, NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
 import matplotlib
@@ -39,13 +38,11 @@ import matplotlib.style as mplstyle
 import matplotlib.pyplot as plt
 
 from pandas import read_csv, concat, to_datetime
-
-
-
 #try:
 #    from configparser import ConfigParser
 #except ImportError:
 #    from ConfigParser import ConfigParser  # ver. < 3.0
+# for logging
 import logging
 from logging.handlers import TimedRotatingFileHandler
 
@@ -63,6 +60,7 @@ else:
         base_dir = getcwd()
         running_mode = 'Interactive'
 
+# directories to store data from the controller and program logs
 datadir   = "C:" + sep + "_datacache_"
 logdir    = "C:" + sep + "_logcache_"
 #configdir = os.environ.get('USERPROFILE') + '\\.bpc'
@@ -81,7 +79,6 @@ if path.isdir(logdir) == False:
 #        f.close()
 #    except:
 #        pass
-
 # Create the logger
 logger = logging.getLogger(__name__)
 # set the log level
@@ -93,16 +90,17 @@ fmt = logging.Formatter('%(asctime)s : %(levelname)s : %(name)s : %(message)s')
 file_handler.setFormatter(fmt)
 logger.addHandler(file_handler)
 
-__version__ = "0.7" # Program version string
+# python globals
+__version__ = '0.8' # Program version string
 MAIN_THREAD_POLL = 1000 # in ms
 He_EXP_RATIO = 1./757 # liquid to gas expansion ratio for Helium at RT
 WIDTH = 420
 HEIGHT= 310
 HIST = 24
+
 chdir(base_dir)
 # load the main ui file
 main_file = uic.loadUiType(path.join(base_dir, 'ui\\main.ui'))[0]
-
 mplstyle.use('fast')
 
 params = {
@@ -120,6 +118,7 @@ params = {
            'axes.spines.bottom': True,
            'axes.spines.left': True,
            'axes.spines.right': True,
+           'axes.linewidth': 1.2,
            'lines.linewidth': 1.0,
            'lines.markersize': 1.0,
            'grid.color': 'gray',
@@ -137,29 +136,27 @@ params = {
            'figure.raise_window' : True
           }
 
-plt.rc('axes', linewidth = 2)
 plt.rc('font', family = 'serif')
 matplotlib.rcParams.update(params)
 
 class MplCanvas(FigureCanvasQTAgg):
 
-    def __init__(self, parent=None, width=5, height=2, dpi=100):
+    def __init__(self, parent=None, width=5, height=2, dpi=180):
         self.fig = Figure(figsize=(width, height), dpi=dpi)
         self.ax1 = self.fig.add_subplot(111)
         self.ax_settings()
         super(MplCanvas, self).__init__(self.fig)
 
     def ax_settings(self, ):
-        logger.info ('In function: ' + inspect.stack()[0][3])
+        #logger.info ('In function: ' + inspect.stack()[0][3])
         locator =   AutoDateLocator(minticks=5, maxticks=5)
         date_form = ConciseDateFormatter(locator)
         self.ax1.xaxis.set_major_formatter(date_form)
         self.ax1.tick_params(axis='x', labelrotation = 45)
-        self.ax1.set_ylabel('lHe rec. (l/d)')
+        self.ax1.set_ylabel('lHe rec. (l/day)')
         self.ax1.set_xlabel('Date')
-        
         self.fig.canvas.draw()
-        self.fig.tight_layout(pad=0.4, w_pad=1, h_pad=1.0)
+        # self.fig.tight_layout(pad=0.4, w_pad=1, h_pad=1.0)
 
 class mainThread(QThread, QObject):
     # define the signals that this thread calls
@@ -201,10 +198,9 @@ class mainThread(QThread, QObject):
         try:
             #logger.info("In function: " + inspect.stack()[0][3])
             all_rbv = self._getRbvs()
-            # print (all_rbv)
+            #print (all_rbv)
             self.update_data.emit(all_rbv)
             self.plot_temp.emit()
-
         except Exception as e:
             self.update_data.emit(all_rbv)
             logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
@@ -233,9 +229,9 @@ class mainWindow(QTabWidget, main_file):
         self.tab2UI()
         self.setFixedSize(WIDTH, HEIGHT)
         self.tray_icon = None
+        # program flags 
         self.quit_flag = 0
         self.draw_bpc_flag = 0
-        # self.ct = 0
         self.timestamp = datetime.now()
         self.settings = QSettings("global_settings.ini", QSettings.Format.IniFormat)
         self.setupUi(self)
@@ -273,7 +269,7 @@ class mainWindow(QTabWidget, main_file):
         self.cb_plt_hist.activated.connect(self.set_plot_history)
         self.plt_history = self.cb_plt_hist.currentText()
 
-        logger.info ("In function: " + inspect.stack()[0][3])
+        #logger.info ("In function: " + inspect.stack()[0][3])
         self.start_time = time()
         
     def tab1UI(self, ):
@@ -310,7 +306,6 @@ class mainWindow(QTabWidget, main_file):
         self.cb_resample.setCurrentText('1min')
         self.cb_resample.setFixedHeight(20)
         self.cb_resample.setFixedWidth(60)
-
         self.binsize = self.cb_resample.currentText()
 
         self.btn_plot = QPushButton('PLOT', self)
@@ -331,9 +326,15 @@ class mainWindow(QTabWidget, main_file):
         self.tab2.setLayout(layout)
 
     def plot_my_data(self,):
+        #logger.info("In function: " + inspect.stack()[0][3])
         self.btn_plot.setEnabled(False)
-        self.df_bpcCtrl = self.get_my_data()
-        self.redraw()
+        try:
+            #print ("In plot_my_data")
+            self.df_bpcCtrl = self.get_my_data()
+            self.redraw()
+        except Exception as e:
+            logger.info("In function: " +  inspect.stack()[0][3] + "Exception: " + str(e))
+            pass
         self.btn_plot.setEnabled(True)
 
     def _read_helper(self, filename,):
@@ -348,15 +349,16 @@ class mainWindow(QTabWidget, main_file):
                                           usecols=[0,1,2,3], engine='c', names=headers, na_values='nan'))
             return mydata
         except Exception as e:
-            print(filename, e)
+            logger.info("In function: " +  inspect.stack()[0][3] + "In file: ", str(filename) + " Exception: " + str(e))
 
-    # @functools.lru_cache(maxsize=128)
+    #@functools.lru_cache(maxsize=128)
     def get_my_data(self,):
         global datadir
         mydata = []
         data   = []
         get_data_start = perf_counter()
         try:
+            #print ("In get_my_data")
             i = 0
             for filename in scandir(datadir + '\\'):
                 self.filename = filename.name
@@ -376,13 +378,13 @@ class mainWindow(QTabWidget, main_file):
                         delta_time = (datetime.now() - fname_date).total_seconds()
                         if (float(delta_time) <= 1.578*1e7):
                             mydata.append(self._read_helper(datadir + sep + filename.name))
-                            # print (filename.name, mydata)
+                            #print (filename.name, mydata)
                     elif self.cb_time.currentText() == 'last month':
                         fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
                         delta_time = (datetime.now() - fname_date).total_seconds()
                         if (float(delta_time) <= 2.63*1e6):
                             mydata.append(self._read_helper(datadir + sep + filename.name))
-                            # print (filename.name, mydata)
+                            #print (filename.name, mydata)
                     elif self.cb_time.currentText() == 'last week':
                         fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
                         delta_time = (datetime.now() - fname_date).total_seconds()
@@ -400,36 +402,39 @@ class mainWindow(QTabWidget, main_file):
         except:
             logger.info('Error reading file/getting data in filename: ' + str(self.filename) + ' ' + str(inspect.stack()[0][3]))
             pass
-        get_data_end = perf_counter() - get_data_start
-        logger.info("Time taken to get data: " +  str(get_data_end))
-
-        for i in mydata:
-            data.extend(i)
-        self.binsize = self.cb_resample.currentText()
-        if data != []:
-            dfc = concat(data, ignore_index=True)
-            dfc['Date'] = to_datetime(dfc['Date'])
-            dfc.insert(4, "lHe Rec.", dfc['Flow']*60*24/(1./He_EXP_RATIO))
-            dfc.set_index('Date', inplace=True)
-            # print (dfc.head(5))
-            resample_dfc = dfc.resample(self.binsize, axis=0, closed='left', label='left').mean()
-            resample_dfc.dropna(axis=0, inplace=True)
-            resample_dfc['Date'] = resample_dfc.index
-            return (resample_dfc)
+        if mydata != []:
+            for i in mydata:
+                data.extend(i)
         else:
-            return 0
+            logger.info("Empty dataset")
+            return
+        self.binsize = self.cb_resample.currentText()
+        dfc = concat(data, ignore_index=True)
+        dfc['Date'] = to_datetime(dfc['Date'])
+        dfc.insert(4, "lHe Rec.", dfc['Flow']*60*24/(1./He_EXP_RATIO))
+        dfc.set_index('Date', inplace=True)
+        # print (dfc.head(5))
+        resample_dfc = dfc.resample(self.binsize, axis=0, closed='left', label='left').mean()
+        resample_dfc.dropna(axis=0, inplace=True)
+        resample_dfc['Date'] = resample_dfc.index
+        get_data_end = perf_counter() - get_data_start
+        logger.info("Time taken to get and analyze data: " +  str(get_data_end))
+        return (resample_dfc)
 
     def redraw(self,):
-        redraw_start = perf_counter()
-        self.plot_history_data()
-        self.sc.flush_events()
-        self.sc.draw_idle()
-        self.finish_work = perf_counter()
-        logger.info('Time taken plot the data and draw canvas: ' + \
-                    str(perf_counter() - redraw_start) + '\n')
+        try:
+            redraw_start = perf_counter()
+            self.plot_history_data()
+            self.sc.flush_events()
+            self.sc.draw_idle()
+            logger.info('Time taken plot the data and draw canvas: ' + \
+                        str(perf_counter() - redraw_start) + '\n')
+        except:
+            logger.info("Error in function: " + str(inspect.stack()[0][3]))
+            pass
 
     def plot_history_data(self, ):
-        logger.info ('In function: ' + inspect.stack()[0][3])
+        #logger.info ('In function: ' + inspect.stack()[0][3])
         try:
             if self.draw_bpc_flag == 1:
                 self.plot1_ref[0].set_data(self.df_bpcCtrl['Date'], self.df_bpcCtrl['lHe Rec.'])
@@ -441,7 +446,7 @@ class mainWindow(QTabWidget, main_file):
 
         except Exception as e:
             logger.info('Error in function: ' + inspect.stack()[0][3] + ' ' + str(e))
-            if self.plot1_ref != None or self.plot8_ref != None:
+            if self.plot1_ref != None:
                 self.plot1_ref[0].remove()
                 self.plot1_ref = None
             self.draw_bpc_flag = 0
@@ -455,11 +460,11 @@ class mainWindow(QTabWidget, main_file):
         Show the main window and connect to signals coming from various threads
         """
         global MAIN_THREAD_POLL
-        logger.info("In function: " + inspect.stack()[0][3])
+        #logger.info("In function: " + inspect.stack()[0][3])
         QMainWindow.show(self)
         self.sc.fig.tight_layout()
         # self.timer.setTimerType(QtCore.Qt.PreciseTimer)
-        self.timer.timeout.connect(self.checkMainThread)
+        self.timer.timeout.connect(self.check_worker_thread)
         # run the main thread every 1s
         self.timer.start(MAIN_THREAD_POLL)
 
@@ -480,7 +485,7 @@ class mainWindow(QTabWidget, main_file):
          rec = round(all_rbv[10]*60*24/(1./He_EXP_RATIO), 3)
          self.lbl_rec_rbv.setText(str(rec))
 
-    def checkMainThread(self):
+    def check_worker_thread(self):
         """
         A QTimer is used to run the main thread every 1 s.
         We also use this to update the filename of the data file
@@ -631,7 +636,6 @@ class mainWindow(QTabWidget, main_file):
         # count_list = range(len(pressure_list))
         # count_list_2 = range(len(flow_list))
         # print ('after: ', len(pressure_list))
-
         try:
             self.curve1.setData(x = ct_list, y = pressure_list, pen = 'r', shadowPen = 'r', symbol='o', symbolSize=1.5, symbolBrush='r', connect='finite')
             self.curve2.setData(x = ct_list, y = flow_list, pen = 'b', shadowPen = 'b', symbol='x', symbolSize=1.5, symbolBrush='b', connect='finite')
