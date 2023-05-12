@@ -1,5 +1,5 @@
 #! /usr/bin/env python
-import sys, functools
+import sys
 from os import getenv, environ, chdir, sep, path, mkdir, getcwd, scandir
 try:
     environ["QT_API"] = "pyqt6"
@@ -36,6 +36,7 @@ import matplotlib
 from matplotlib.dates import ConciseDateFormatter, AutoDateLocator
 import matplotlib.style as mplstyle
 import matplotlib.pyplot as plt
+from concurrent.futures import ThreadPoolExecutor
 
 from pandas import read_csv, concat, to_datetime
 #try:
@@ -91,12 +92,13 @@ file_handler.setFormatter(fmt)
 logger.addHandler(file_handler)
 
 # python globals
-__version__ = '0.8' # Program version string
+__version__ = '0.9' # Program version string
 MAIN_THREAD_POLL = 1000 # in ms
 He_EXP_RATIO = 1./757 # liquid to gas expansion ratio for Helium at RT
 WIDTH = 420
 HEIGHT= 310
 HIST = 24
+WORKERS = 8
 
 chdir(base_dir)
 # load the main ui file
@@ -104,14 +106,14 @@ main_file = uic.loadUiType(path.join(base_dir, 'ui\\main.ui'))[0]
 mplstyle.use('fast')
 
 params = {
-           'axes.labelsize': 6,
-           'font.size': 6,
+           'axes.labelsize': 5,
+           'font.size': 5,
            'xtick.labelsize': 5,
-           'ytick.labelsize': 5,
+           'ytick.labelsize': 6,
            'text.usetex': False,
            'figure.figsize': [5,2],
            'figure.max_open_warning': 20,
-           'figure.facecolor': 'white',
+           'figure.facecolor': '#f0f0f0',
            'figure.edgecolor': 'white',
            'figure.dpi': 100,
            'axes.spines.top': True,
@@ -330,7 +332,9 @@ class mainWindow(QTabWidget, main_file):
         self.btn_plot.setEnabled(False)
         try:
             #print ("In plot_my_data")
-            self.df_bpcCtrl = self.get_my_data()
+            with ThreadPoolExecutor(max_workers=WORKERS) as executor:
+                self.df_bpcCtrl = (executor.submit(self.get_my_data))
+            self.df_bpcCtrl = self.df_bpcCtrl.result()
             self.redraw()
         except Exception as e:
             logger.info("In function: " +  inspect.stack()[0][3] + "Exception: " + str(e))
@@ -427,6 +431,7 @@ class mainWindow(QTabWidget, main_file):
             self.plot_history_data()
             self.sc.flush_events()
             self.sc.draw_idle()
+            self.sc.fig.tight_layout()
             logger.info('Time taken plot the data and draw canvas: ' + \
                         str(perf_counter() - redraw_start) + '\n')
         except:
