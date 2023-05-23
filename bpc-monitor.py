@@ -39,10 +39,14 @@ import matplotlib.pyplot as plt
 from concurrent.futures import ThreadPoolExecutor
 
 from pandas import read_csv, concat, to_datetime
-#try:
-#    from configparser import ConfigParser
-#except ImportError:
-#    from ConfigParser import ConfigParser  # ver. < 3.0
+
+from pcaspy import SimpleServer, Driver
+from pcaspy.tools import ServerThread
+
+try:
+    from configparser import ConfigParser
+except ImportError:
+    from ConfigParser import ConfigParser  # ver. < 3.0
 # for logging
 import logging
 from logging.handlers import TimedRotatingFileHandler
@@ -64,22 +68,27 @@ else:
 # directories to store data from the controller and program logs
 datadir   = "C:" + sep + "_datacache_"
 logdir    = "C:" + sep + "_logcache_"
-#configdir = os.environ.get('USERPROFILE') + '\\.bpc'
+# configdir = environ.get('USERPROFILE') + '\\.bpc'
+configdir = "C:" + sep + "_config_"
 # create a folder to store data and log files
 if path.isdir(datadir) == False:
     mkdir(datadir)
 if path.isdir(logdir) == False:
     mkdir(logdir)
-#if os.path.isdir(configdir) == False:
-#    try:
-#        os.mkdir(configdir)
-#        f = open(configdir + os.sep + "config.ini", 'x')
-#        f.write('[vision130]\n')
-#        f.write('host: ' + '172.30.33.212'+ '\n') # example ip
-#        f.write('port: ' + '20256' + '\n') # example port
-#        f.close()
-#    except:
-#        pass
+if path.isdir(configdir) == False:
+    try:
+        mkdir(configdir)
+        f = open(configdir + sep + "bpc_config.ini", 'x')
+        f.write('[epics-pv-prefix]\n')
+        f.write('LAB = ' + 'OHM'+ '\n') # example
+        f.write('INSTR = ' + 'BPC1' + '\n') # example
+        f.write('[vision130]\n')
+        f.write('host = ' + '172.30.33.212'+ '\n') # example
+        f.write('port = ' + '20256' + '\n') # example
+        
+        f.close()
+    except:
+        pass
 # Create the logger
 logger = logging.getLogger(__name__)
 # set the log level
@@ -92,9 +101,9 @@ file_handler.setFormatter(fmt)
 logger.addHandler(file_handler)
 
 # python globals
-__version__ = '0.9' # Program version string
+__version__ = '1.0' # Program version string
 MAIN_THREAD_POLL = 1000 # in ms
-He_EXP_RATIO = 1./757 # liquid to gas expansion ratio for Helium at RT
+He_EXP_RATIO = 1./754.2 # liquid to gas expansion ratio for Helium at 1 atm and 70 F
 WIDTH = 420
 HEIGHT= 310
 HIST = 24
@@ -140,6 +149,21 @@ params = {
 
 plt.rc('font', family = 'serif')
 matplotlib.rcParams.update(params)
+
+pvdb = {
+        'PRESSURE_RBV': {'prec'  : 3,
+                     'unit'  : 'mbar'},
+        'LHE_FLOW_RBV': {'prec'  : 6,
+                     'unit'  : 'l/day'},
+        'VALVE_RBV': {'prec'  : 0,
+                     'unit'  : '%'},
+        'GAS_FLOW_RBV': {'prec'  : 6,
+                     'unit'  : 'l/min'},
+        }
+
+class myDriver(Driver):
+    def __init__(self):
+       super(myDriver,self).__init__()
 
 class MplCanvas(FigureCanvasQTAgg):
 
@@ -270,6 +294,8 @@ class mainWindow(QTabWidget, main_file):
         self.cb_plt_hist.setCurrentText('1 hr')
         self.cb_plt_hist.activated.connect(self.set_plot_history)
         self.plt_history = self.cb_plt_hist.currentText()
+        
+        self.drv = myDriver()
 
         #logger.info ("In function: " + inspect.stack()[0][3])
         self.start_time = time()
@@ -487,8 +513,13 @@ class mainWindow(QTabWidget, main_file):
          self.lbl_pressure_rbv.setText(str(round(all_rbv[20], 3)))
          self.lbl_flow_rbv.setText(str(round(all_rbv[10], 3)))
          self.lbl_valve_rbv.setText(str(round(all_rbv[-1], 3)))
-         rec = round(all_rbv[10]*60*24/(1./He_EXP_RATIO), 3)
-         self.lbl_rec_rbv.setText(str(rec))
+         rec = all_rbv[10]*60*24/(1./He_EXP_RATIO)
+         self.lbl_rec_rbv.setText(str(round(rec, 3)))
+         self.drv.write('PRESSURE_RBV', all_rbv[20])
+         self.drv.write('LHE_FLOW_RBV', rec)
+         self.drv.write('VALVE_RBV', all_rbv[-1] )
+         self.drv.write('GAS_FLOW_RBV', all_rbv[10])
+         self.drv.updatePVs()
 
     def check_worker_thread(self):
         """
@@ -689,6 +720,7 @@ class mainWindow(QTabWidget, main_file):
             if reply == QMessageBox.StandardButton.Yes:
                 self.quit_flag = 1
                 mybpc.close_comm()
+                server_thread.stop
                 self.close()
                 QtCore.QCoreApplication.instance().quit
                 app.quit()
@@ -696,6 +728,7 @@ class mainWindow(QTabWidget, main_file):
                 pass
         if self.quit_flag == 1:
             mybpc.close_comm()
+            server_thread.stop
             self.close()
             QtCore.QCoreApplication.instance().quit
             app.quit()
@@ -711,6 +744,7 @@ def _sigint_handler(*args):
                                   QtGui.QMessageBox.No) == QtGui.QMessageBox.Yes:
 
         mthread.stop()
+        server_thread.stop
         mainWindow.loop.close()
         QtGui.QApplication.quit()
 
@@ -723,18 +757,34 @@ if __name__ == '__main__':
     # Create the Qt application
     app = QApplication(sys.argv)
     # read the .ini file
-    #config = ConfigParser()
-    #user_config = configdir + os.sep + 'config.ini'
-    #if os.path.exists(user_config) and os.path.isfile(user_config):
-    #    config_path = user_config
-    #else:
-    #    config_path = os.getcwd() + os.sep + 'config.ini'
-    #config.read(config_path)
+    config = ConfigParser()
+    user_config = configdir + sep + 'bpc_config.ini'
+    if path.exists(user_config) and path.isfile(user_config):
+        config_path = user_config
+    else:
+        config_path = getcwd() + sep + 'bpc_config.ini'
+    config.read(config_path)
+
     # Initialize all the hardware used for this application
     try:
-        myserver = str(getenv('BPC_SERVER'))
-    except:
+        # myserver = str(getenv('BPC_SERVER'))
+        # LAB = str(getenv('LAB'))
+        # INSTR = str(getenv('INSTR'))
+        myserver = config['vision130']['host']
+        port = config['vision130']['port']
+        LAB = config['epics-pv-prefix']['LAB']
+        INSTR = config['epics-pv-prefix']['INSTR']
+
+    except Exception as e:
+        logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
         myserver = '172.30.33.212'
+        LAB = 'OHM'
+        INSTR = 'BPC1'
+        pass
+    # create pcas server
+    prefix = LAB + ':' + INSTR + ':'
+    server = SimpleServer()
+    server.createPV(prefix, pvdb)
     mybpc = Vision130.Vision130Driver(myserver, '20256')
     # start the main thread
     mthread = mainThread()
@@ -749,5 +799,9 @@ if __name__ == '__main__':
     main_window.show()
     # handle ctrl+c event
     signal.signal(signal.SIGINT, _sigint_handler)
+    # create pcas server thread and shut down when app exits
+    server_thread = ServerThread(server)
+    # start pcas and gui event loop
+    server_thread.start()
     # Start the GUI thread
     sys.exit(app.exec())

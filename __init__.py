@@ -5,7 +5,7 @@ __maintainer__ 	=       "Alireza Panna"
 __email__ 	=       "alireza.panna@nist.gov"
 __status__ 	=       "Stable"
 __date__        =       "03/25/2023"
-__version__     =       "0.9"
+__version__     =       "1.0"
 
 TODO            =
 CHANGELOG       =       """
@@ -28,4 +28,5 @@ CHANGELOG       =       """
                         050423: Fixed bug in get_my_data, upgrade to version 0.8
                         051223: Fixed figure background color, using ThreadPoolExwcutor for history plot task, 
                                 upgrade to version 0.9
+                        052223: Added pcas server to broadcast PV data, change He expansion ratio to 754.2, using config files again, update version to 1.0
                         """
