@@ -64,10 +64,8 @@ else:
         base_dir = getcwd()
         running_mode = 'Interactive'
 
-# directories to store data from the controller and program logs
+# directory to store program logs
 logdir    = "C:" + sep + "_logcache_"
-# create a folder to store data and log files
-
 if path.isdir(logdir) == False:
     mkdir(logdir)
 # Create the logger
@@ -742,11 +740,11 @@ if __name__ == '__main__':
     parser = ArgumentParser(prog = 'bpc-monitor',
                             description='Configure bpc-monitor.')
     parser.add_argument('-i', '--host', help='specify the host address', default='172.30.33.212')
-    parser.add_argument('-p', '--port',  help='specify the port', default='20256')
+    parser.add_argument('-p', '--port',  help='specify the port', default='20256', type=int)
     parser.add_argument('-e', '--epics_pv',  help='Specify the PV epics prefix', default=default_epics_pv)
     parser.add_argument( '-s', '--save_path', help='Specify data directory', default=datadir, type=dir_path)
     # parser.add_argument( '-l', '--log-path', help='Specify log directory', default=logdir)
-    args = parser.parse_args()
+    args = parser.parse_args(sys.argv[1:])
     myserver = args.host
     port = args.port
     PV = args.epics_pv
