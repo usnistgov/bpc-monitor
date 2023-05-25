@@ -1,6 +1,5 @@
 #! /usr/bin/env python
 
-import os
 import socket # for socket
 import struct
 from numpy import NaN
@@ -71,7 +70,7 @@ class Vision130Driver:
         except:
             # try to reconnect
             self.close_comm()
-            self.__init__(str(os.getenv('BPC_SERVER')), '20256')
+            self.__init__(host, int(port))
             return [NaN]*24
         
     
