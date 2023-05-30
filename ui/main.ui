@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>450</width>
-    <height>310</height>
+    <height>382</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -36,7 +36,7 @@
     <property name="geometry">
      <rect>
       <x>30</x>
-      <y>220</y>
+      <y>297</y>
       <width>41</width>
       <height>20</height>
      </rect>
@@ -54,7 +54,7 @@
     <property name="geometry">
      <rect>
       <x>15</x>
-      <y>180</y>
+      <y>257</y>
       <width>71</width>
       <height>20</height>
      </rect>
@@ -72,9 +72,9 @@
     <property name="geometry">
      <rect>
       <x>180</x>
-      <y>160</y>
+      <y>190</y>
       <width>266</width>
-      <height>121</height>
+      <height>161</height>
      </rect>
     </property>
     <property name="sizePolicy">
@@ -114,7 +114,7 @@
     <property name="geometry">
      <rect>
       <x>15</x>
-      <y>200</y>
+      <y>277</y>
       <width>71</width>
       <height>22</height>
      </rect>
@@ -129,7 +129,7 @@
     <property name="geometry">
      <rect>
       <x>100</x>
-      <y>195</y>
+      <y>272</y>
       <width>75</width>
       <height>31</height>
      </rect>
@@ -152,7 +152,7 @@ color: rgb(255, 255, 255);</string>
     <property name="geometry">
      <rect>
       <x>7</x>
-      <y>243</y>
+      <y>320</y>
       <width>91</width>
       <height>31</height>
      </rect>
@@ -219,7 +219,7 @@ color: rgb(255, 255, 255);</string>
     <property name="geometry">
      <rect>
       <x>100</x>
-      <y>243</y>
+      <y>320</y>
       <width>75</width>
       <height>31</height>
      </rect>
@@ -245,13 +245,13 @@ color: rgb(255, 255, 255);</string>
     <property name="geometry">
      <rect>
       <x>5</x>
-      <y>40</y>
-      <width>170</width>
-      <height>137</height>
+      <y>30</y>
+      <width>171</width>
+      <height>170</height>
      </rect>
     </property>
     <property name="sizePolicy">
-     <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+     <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
       <horstretch>0</horstretch>
       <verstretch>0</verstretch>
      </sizepolicy>
@@ -259,13 +259,13 @@ color: rgb(255, 255, 255);</string>
     <property name="minimumSize">
      <size>
       <width>150</width>
-      <height>137</height>
+      <height>170</height>
      </size>
     </property>
     <property name="maximumSize">
      <size>
       <width>181</width>
-      <height>137</height>
+      <height>170</height>
      </size>
     </property>
     <property name="autoFillBackground">
@@ -554,6 +554,78 @@ color: rgb(0, 0, 0);</string>
       <string>lHe Rec [l/d]</string>
      </property>
     </widget>
+    <widget class="QLabel" name="lbl_lHe_per_remain">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>130</y>
+       <width>121</width>
+       <height>31</height>
+      </rect>
+     </property>
+     <property name="minimumSize">
+      <size>
+       <width>0</width>
+       <height>31</height>
+      </size>
+     </property>
+     <property name="font">
+      <font>
+       <pointsize>10</pointsize>
+       <bold>false</bold>
+      </font>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">background-color: rgb(255, 255, 255,0);
+color: rgb(0, 0, 0);</string>
+     </property>
+     <property name="text">
+      <string>lHe left [%]</string>
+     </property>
+    </widget>
+    <widget class="QLabel" name="lbl_lHe_per_remain_rbv">
+     <property name="geometry">
+      <rect>
+       <x>90</x>
+       <y>135</y>
+       <width>71</width>
+       <height>21</height>
+      </rect>
+     </property>
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
+     <property name="font">
+      <font>
+       <pointsize>10</pointsize>
+      </font>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">background-color: rgb(0, 0, 0);
+color: rgb(0, 170, 0);</string>
+     </property>
+     <property name="frameShadow">
+      <enum>QFrame::Sunken</enum>
+     </property>
+     <property name="text">
+      <string>123</string>
+     </property>
+     <property name="textFormat">
+      <enum>Qt::AutoText</enum>
+     </property>
+     <property name="scaledContents">
+      <bool>true</bool>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignCenter</set>
+     </property>
+     <property name="indent">
+      <number>0</number>
+     </property>
+    </widget>
    </widget>
    <widget class="PlotWidget" name="pw">
     <property name="geometry">
@@ -561,7 +633,7 @@ color: rgb(0, 0, 0);</string>
       <x>180</x>
       <y>39</y>
       <width>266</width>
-      <height>121</height>
+      <height>151</height>
      </rect>
     </property>
     <property name="sizePolicy">
@@ -595,6 +667,84 @@ color: rgb(0, 0, 0);</string>
     </property>
     <property name="horizontalScrollBarPolicy">
      <enum>Qt::ScrollBarAsNeeded</enum>
+    </property>
+   </widget>
+   <widget class="QLabel" name="lbl_start_ltr">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>200</y>
+      <width>81</width>
+      <height>31</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>0</width>
+      <height>31</height>
+     </size>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>10</pointsize>
+      <bold>false</bold>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">background-color: rgb(255, 255, 255,0);
+color: rgb(0, 0, 0);</string>
+    </property>
+    <property name="text">
+     <string>lHe Start [ltr]</string>
+    </property>
+   </widget>
+   <widget class="QLineEdit" name="le_start_ltr">
+    <property name="geometry">
+     <rect>
+      <x>119</x>
+      <y>204</y>
+      <width>51</width>
+      <height>25</height>
+     </rect>
+    </property>
+   </widget>
+   <widget class="QLabel" name="lbl_lHe_threshold">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>230</y>
+      <width>111</width>
+      <height>31</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>0</width>
+      <height>31</height>
+     </size>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>10</pointsize>
+      <bold>false</bold>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">background-color: rgb(255, 255, 255,0);
+color: rgb(0, 0, 0);</string>
+    </property>
+    <property name="text">
+     <string>lHe threshold [%]</string>
+    </property>
+   </widget>
+   <widget class="QLineEdit" name="le_lHe_threshold">
+    <property name="geometry">
+     <rect>
+      <x>119</x>
+      <y>234</y>
+      <width>51</width>
+      <height>25</height>
+     </rect>
     </property>
    </widget>
   </widget>

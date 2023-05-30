@@ -6,22 +6,23 @@ from random import randint
 
 try:
     environ["QT_API"] = "pyqt6"
-    from PyQt6 import QtCore, uic, QtGui
-    from PyQt6.QtCore import pyqtSignal, QTimer, QThread, QSettings, QObject
-    from PyQt6.QtGui import QAction
+    from PyQt6 import QtCore, QtGui
+    from PyQt6.QtCore import pyqtSignal, QTimer, QThread, QSettings, QObject, QRect, QSize
+    from PyQt6.QtGui import QAction, QFont, QDoubleValidator
     from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,\
                                 QLabel, QPushButton, QComboBox,\
                                 QMessageBox, QMenu, QSystemTrayIcon, QStyle, QTabWidget,
-                                QFormLayout)
+                                QLineEdit, QFrame, QSizePolicy, QMenuBar, QMenu, QTextEdit)
     pixmapi = QStyle.StandardPixmap.SP_TitleBarMenuButton
 except ImportError:
     environ["QT_API"] = "pyqt5"
-    from PyQt5 import QtCore, uic, QtGui
-    from PyQt5.QtCore import pyqtSignal, QTimer, QThread, QSettings, QObject
+    from PyQt5 import QtCore, QtGui
+    from PyQt5.QtGui import QFont, QDoubleValidator
+    from PyQt5.QtCore import pyqtSignal, QTimer, QThread, QSettings, QObject, QRect, QSize
     from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,\
                                 QLabel, QPushButton, QComboBox, \
                                 QMessageBox, QSystemTrayIcon, QStyle, QMenu, QAction, QTabWidget,
-                                QFormLayout)
+                                QLineEdit, QFrame, QSizePolicy, QMenuBar, QMenu, QTextEdit)
     pixmapi = QStyle.SP_TitleBarMenuButton
 
 import pyqtgraph as pg
@@ -80,17 +81,17 @@ file_handler.setFormatter(fmt)
 logger.addHandler(file_handler)
 
 # python globals
-__version__ = '1.1' # Program version string
+__version__ = '1.2' # Program version string
 MAIN_THREAD_POLL = 1000 # in ms
 He_EXP_RATIO = 1./754.2 # liquid to gas expansion ratio for Helium at 1 atm and 70 F
 WIDTH = 450
-HEIGHT= 310
+HEIGHT= 390
 HIST = 24
 WORKERS = 8
 
 chdir(base_dir)
 # load the main ui file
-main_file = uic.loadUiType(path.join(base_dir, 'ui\\main.ui'))[0]
+# main_file = uic.loadUiType(path.join(base_dir, 'ui\\main.ui'))[0]
 mplstyle.use('fast')
 
 params = {
@@ -129,6 +130,10 @@ params = {
 plt.rc('font', family = 'serif')
 matplotlib.rcParams.update(params)
 
+style = """QTabWidget::tab-bar{
+           alignment: right;
+           }"""
+
 pvdb = {
         'PRESSURE': {'prec'  : 3,
                      'unit'  : 'mbar'},
@@ -141,6 +146,7 @@ pvdb = {
         }
 
 class myDriver(Driver):
+
     def __init__(self):
        super(myDriver,self).__init__()
 
@@ -176,6 +182,7 @@ class mainThread(QThread, QObject):
         QtCore.QThread.__init__(self)
         QtCore.QObject.__init__(self)
         self.setTerminationEnabled(True)
+        self.lHe_summer = []
 
     def __del__(self):
         """
@@ -200,9 +207,32 @@ class mainThread(QThread, QObject):
         - This function is called every 1 s, this can be changed by setting
           MAIN_THREAD_POLL
         """
+        global MAIN_THREAD_POLL
         try:
             #logger.info("In function: " + inspect.stack()[0][3])
+            start_analysis = perf_counter()
             all_rbv = self._getRbvs()
+            rec = all_rbv[10]*60*24/(1./He_EXP_RATIO)
+            all_rbv.insert(len(all_rbv), rec)
+            if main_window.le_start_ltr.text() != '':
+                start_lHe = float(main_window.le_start_ltr.text())
+                if start_lHe >= 0:
+                    self.lHe_summer.append((rec/86400.0)*main_window.actual_time_taken)
+                    current_lHe = sum(self.lHe_summer)
+                    remaining_lHe_perc = 100.0 - (current_lHe/start_lHe)*100
+                    all_rbv.insert(len(all_rbv), str(round(remaining_lHe_perc, 4)))
+                    if main_window.le_lHe_threshold.text() != '':
+                         if remaining_lHe_perc <= float(main_window.le_lHe_threshold.text()):
+                             main_window.lbl_lHe_per_remain_rbv.setStyleSheet("color: red; background-color: black;")
+                         else:
+                             main_window.lbl_lHe_per_remain_rbv.setStyleSheet("color: rgb(0, 170, 0); background-color: black;")
+                else:
+                    all_rbv.insert(len(all_rbv), '')
+                    self.lHe_summer = []
+            else:
+                all_rbv.insert(len(all_rbv), '')
+                self.lHe_summer = []
+            
             #print (all_rbv)
             self.update_data.emit(all_rbv)
             self.plot_temp.emit()
@@ -219,19 +249,44 @@ class mainThread(QThread, QObject):
         file_handler.close()
         self.quit()
 
-class mainWindow(QTabWidget, main_file):
+class aboutWindow(QWidget):
+    
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("About")
+        self.setFixedSize(300, 200)
+        self.te_about = QTextEdit()
+        self.te_about.setReadOnly(True)
+        self.te_about.setPlainText("Developer & Maintainer: Alireza Panna")
+        self.te_about.append("Co-Maintainer: Frank Seifert")
+        self.te_about.append("Email: alireza.panna@nist.gov & frank.seifert@nist.gov")
+        self.te_about.append("EPICS PV for this server: " + str(args.epics_pv))
+        self.te_about.append("Current data folder: " + str(args.save_path))
+    
+        layout = QVBoxLayout()
+        layout.addWidget(self.te_about)
+        self.setLayout(layout)
+        
+        
+class mainWindow(QTabWidget):
 
     def __init__(self):
         global HIST
         global MAIN_THREAD_POLL
         QTabWidget.__init__(self)
-        # self.tab1 = QWidget()
+        self.tab1 = QWidget()
+        self.addTab(self.tab1, "Viewer")
         self.tab2 = QWidget()
         self.addTab(self.tab2,"History")
-        # self.addTab(self.tab1, "Logger")
+        # self.tab3 = QWidget()
+        # self.addTab(self.tab3, "lHe Dewar stats")
+        self.setStyleSheet(style)
+        self.font = QFont()
+        self.font.setPointSize(10)
         self.sc = MplCanvas(self, width=5, height=2, dpi=180)
-        # self.tab1UI()
-        self.tab2UI()
+        self.tab1_ui()
+        self.tab2_ui()
+        # self.tab3_ui()
         self.setFixedSize(WIDTH, HEIGHT)
         self.tray_icon = None
         # program flags 
@@ -239,15 +294,17 @@ class mainWindow(QTabWidget, main_file):
         self.draw_bpc_flag = 0
         self.timestamp = datetime.now()
         self.settings = QSettings("global_settings.ini", QSettings.Format.IniFormat)
-        self.setupUi(self)
+        # self.setupUi(self)
         self.timer = QTimer()
         self.plot_settings()
         self.fname = datadir + '\\bpc_log_' + strftime("%Y%m%d") + '.txt'
         self.data_pressure = deque(maxlen=int(86400/(HIST*MAIN_THREAD_POLL*1e-3))) #
         self.data_flow = deque(maxlen=int(86400/(HIST*MAIN_THREAD_POLL*1e-3)))
-
-        mthread.update_data.connect(self._getAllData)
-        mthread.plot_temp.connect(self.plot_data)
+        # start the main thread
+        self.mthread = mainThread()
+        self.mthread.start()
+        self.mthread.update_data.connect(self._getAllData)
+        self.mthread.plot_temp.connect(self.plot_data)
 
         self.tray_icon = QSystemTrayIcon(self)
         self.tray_icon.setIcon(self.style().standardIcon(pixmapi))
@@ -268,29 +325,317 @@ class mainWindow(QTabWidget, main_file):
         show_action.triggered.connect(self.show)
         quit_action.triggered.connect(self._exit_app)
         hide_action.triggered.connect(self.hide)
+        
+        self.close_action = QAction("&Quit", self)
+        self.close_action.setStatusTip("Quit this program")
+        self.close_action.setShortcut("Ctrl + Q")
+        self.close_action.triggered.connect(self.quit)
+        
+        self.about_action = QAction("&About", self)
+        self.about_action.setStatusTip("Program information & license")
+        self.about_action.triggered.connect(self._about)
 
-        self.cb_plt_hist.addItems(['1 min', '5 min', '1 hr', '2 hr', '12 hr', '1 d', '2 d', '1 w', '1 m', '1 y'])
+        self.cb_plt_hist.addItems(['1 min', '5 min', '1 hr', '2 hr', '12 hr', \
+                                   '1 d', '2 d', '1 w', '1 m', '1 y'])
         self.cb_plt_hist.setCurrentText('1 hr')
         self.cb_plt_hist.activated.connect(self.set_plot_history)
         self.plt_history = self.cb_plt_hist.currentText()
-        
-        self.drv = myDriver()
+
+        self._create_menubar()
+
+        if args.epics_pv != '':
+            self.drv = myDriver()
         #logger.info ("In function: " + inspect.stack()[0][3])
         self.start_time = time()
         
-    def tab1UI(self, ):
-        """
-        not used
-        """
-        layout = QFormLayout()
-        self.lbl_pressure = QLabel('P [mbar]')
-        self.lbl_pressure_rbv = QLabel()
+    def _create_menubar(self, ):
+        self.menuBar = QMenuBar(self)
+        self.file_menu = self.menuBar.addMenu("&File")
+        self.file_menu.addAction(self.close_action)
+        self.help_menu = self.menuBar.addMenu("&Help")
+        self.help_menu.addAction(self.about_action)
+    
+    def _about(self,):
+        self.about_window = aboutWindow()
+        self.about_window.show()
         
-        layout.addWidget(self.lbl_pressure)
-        layout.addWidget(self.lbl_pressure_rbv)
-        self.tab1.setLayout(layout)
+    def tab1_ui(self, ):
+        """
+        converted using pyuic
+        """
+        self.lbl_uptime = QLabel(parent=self.tab1)
+        self.lbl_uptime.setGeometry(QRect(30, 297, 41, 20))
+        self.lbl_uptime.setFont(self.font)
+        self.lbl_uptime.setObjectName("lbl_uptime")
+        
+        self.lbl_plt_hist = QLabel(parent=self.tab1)
+        self.lbl_plt_hist.setGeometry(QRect(15, 257, 71, 20))
+        self.lbl_plt_hist.setFont(self.font)
+        self.lbl_plt_hist.setObjectName("lbl_plt_hist")
 
-    def tab2UI(self, ):
+        self.pw_2 = pg.PlotWidget(parent=self.tab1)
+        self.pw_2.setGeometry(QRect(180, 190, 266, 161))
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.pw_2.sizePolicy().hasHeightForWidth())
+        self.pw_2.setSizePolicy(sizePolicy)
+        self.pw_2.setMaximumSize(QtCore.QSize(605, 16777215))
+        self.pw_2.setFont(self.font)
+        self.pw_2.setLayoutDirection(QtCore.Qt.LayoutDirection.LeftToRight)
+        self.pw_2.setStyleSheet("background-color: rgb(240, 240, 240);")
+        self.pw_2.setFrameShape(QFrame.Shape.NoFrame)
+        self.pw_2.setFrameShadow(QFrame.Shadow.Plain)
+        self.pw_2.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.pw_2.setObjectName("pw_2")
+
+        self.cb_plt_hist = QComboBox(parent=self.tab1)
+        self.cb_plt_hist.setGeometry(QtCore.QRect(15, 277, 71, 22))
+        self.cb_plt_hist.setFont(self.font)
+        self.cb_plt_hist.setObjectName("cb_plt_hist")
+
+        self.btn_clr_plots = QPushButton(parent=self.tab1)
+        self.btn_clr_plots.setGeometry(QtCore.QRect(100, 272, 75, 31))
+        self.btn_clr_plots.setFont(self.font)
+        self.btn_clr_plots.setStyleSheet("background-color: rgb(0, 170, 0);\n"
+"color: rgb(255, 255, 255);")
+        self.btn_clr_plots.setObjectName("btn_clr_plots")
+
+        self.le_uptime = QLineEdit(parent=self.tab1)
+        self.le_uptime.setGeometry(QtCore.QRect(7, 320, 91, 31))
+        self.le_uptime.setFont(self.font)
+        self.le_uptime.setLayoutDirection(QtCore.Qt.LayoutDirection.RightToLeft)
+        self.le_uptime.setStyleSheet("background-color: rgb(0, 0, 0);\n"
+"color: rgb(0, 170, 0);")
+        self.le_uptime.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.le_uptime.setObjectName("le_uptime")
+
+        self.label = QLabel(parent=self.tab1)
+        self.label.setGeometry(QtCore.QRect(10, 3, 437, 29))
+        font = QtGui.QFont()
+        font.setFamily("MS Shell Dlg 2")
+        font.setPointSize(13)
+        font.setBold(False)
+        self.label.setFont(font)
+        self.label.setStyleSheet("background-color: rgb(150, 150, 150);\n"
+"color: rgb(255, 255, 255);")
+        self.label.setFrameShape(QFrame.Shape.Panel)
+        self.label.setFrameShadow(QFrame.Shadow.Raised)
+        self.label.setLineWidth(3)
+        self.label.setMidLineWidth(3)
+        self.label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.label.setIndent(0)
+        self.label.setObjectName("label")
+
+        self.btn_quit = QPushButton(parent=self.tab1)
+        self.btn_quit.setGeometry(QtCore.QRect(100, 320, 75, 31))
+        self.btn_quit.setFont(self.font)
+        self.btn_quit.setStyleSheet("background-color: rgb(255, 0, 0);\n"
+"color: rgb(255, 255, 255);")
+        self.btn_quit.setObjectName("btn_quit")
+
+        self.main_frame = QFrame(parent=self.tab1)
+        self.main_frame.setEnabled(True)
+        self.main_frame.setGeometry(QtCore.QRect(5, 35, 171, 170))
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.main_frame.sizePolicy().hasHeightForWidth())
+        self.main_frame.setSizePolicy(sizePolicy)
+        self.main_frame.setMinimumSize(QtCore.QSize(150, 170))
+        self.main_frame.setMaximumSize(QtCore.QSize(181, 170))
+        self.main_frame.setAutoFillBackground(True)
+        self.main_frame.setStyleSheet("background-color: rgb(140, 140, 140, 150);\n"
+"")
+        self.main_frame.setFrameShape(QFrame.Shape.Box)
+        self.main_frame.setFrameShadow(QFrame.Shadow.Raised)
+        self.main_frame.setLineWidth(3)
+        self.main_frame.setObjectName("main_frame")
+
+        self.lbl_flow_rbv = QLabel(parent=self.main_frame)
+        self.lbl_flow_rbv.setGeometry(QtCore.QRect(90, 45, 71, 21))
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.lbl_flow_rbv.sizePolicy().hasHeightForWidth())
+        self.lbl_flow_rbv.setSizePolicy(sizePolicy)
+        self.lbl_flow_rbv.setFont(self.font)
+        self.lbl_flow_rbv.setStyleSheet("background-color: rgb(0, 0, 0);\n"
+"color: rgb(0, 170, 0);")
+        self.lbl_flow_rbv.setFrameShadow(QFrame.Shadow.Sunken)
+        self.lbl_flow_rbv.setTextFormat(QtCore.Qt.TextFormat.AutoText)
+        self.lbl_flow_rbv.setScaledContents(True)
+        self.lbl_flow_rbv.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.lbl_flow_rbv.setIndent(0)
+        self.lbl_flow_rbv.setObjectName("lbl_flow_rbv")
+    
+        self.lbl_pressure_rbv = QLabel(parent=self.main_frame)
+        self.lbl_pressure_rbv.setGeometry(QtCore.QRect(90, 15, 71, 21))
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.lbl_pressure_rbv.sizePolicy().hasHeightForWidth())
+        self.lbl_pressure_rbv.setSizePolicy(sizePolicy)
+        self.lbl_pressure_rbv.setFont(self.font)
+        self.lbl_pressure_rbv.setStyleSheet("background-color: rgb(0, 0, 0);\n"
+"color: rgb(0, 170, 0);")
+        self.lbl_pressure_rbv.setFrameShadow(QFrame.Shadow.Sunken)
+        self.lbl_pressure_rbv.setTextFormat(QtCore.Qt.TextFormat.AutoText)
+        self.lbl_pressure_rbv.setScaledContents(True)
+        self.lbl_pressure_rbv.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.lbl_pressure_rbv.setIndent(0)
+        self.lbl_pressure_rbv.setObjectName("lbl_pressure_rbv")
+
+        self.lbl_pressure = QLabel(parent=self.main_frame)
+        self.lbl_pressure.setGeometry(QtCore.QRect(10, 10, 81, 31))
+        self.lbl_pressure.setFont(self.font)
+        self.lbl_pressure.setStyleSheet("background-color: rgb(255, 255, 255,0);\n"
+"color: rgb(255, 0, 0);")
+        self.lbl_pressure.setObjectName("lbl_pressure")
+
+        self.lbl_flow = QLabel(parent=self.main_frame)
+        self.lbl_flow.setGeometry(QtCore.QRect(10, 40, 121, 31))
+        self.lbl_flow.setFont(self.font)
+        self.lbl_flow.setStyleSheet("background-color: rgb(255, 255, 255,0);\n"
+"color: rgb(0, 0, 255);")
+        self.lbl_flow.setObjectName("lbl_flow")
+
+        self.lbl_valve_rbv = QLabel(parent=self.main_frame)
+        self.lbl_valve_rbv.setGeometry(QtCore.QRect(90, 75, 71, 21))
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.lbl_valve_rbv.sizePolicy().hasHeightForWidth())
+        self.lbl_valve_rbv.setSizePolicy(sizePolicy)
+        self.lbl_valve_rbv.setFont(self.font)
+        self.lbl_valve_rbv.setStyleSheet("background-color: rgb(0, 0, 0);\n"
+"color: rgb(0, 170, 0);")
+        self.lbl_valve_rbv.setFrameShadow(QFrame.Shadow.Sunken)
+        self.lbl_valve_rbv.setTextFormat(QtCore.Qt.TextFormat.AutoText)
+        self.lbl_valve_rbv.setScaledContents(True)
+        self.lbl_valve_rbv.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.lbl_valve_rbv.setIndent(0)
+        self.lbl_valve_rbv.setObjectName("lbl_valve_rbv")
+
+        self.lbl_valve = QLabel(parent=self.main_frame)
+        self.lbl_valve.setGeometry(QtCore.QRect(10, 70, 81, 31))
+        self.lbl_valve.setFont(self.font)
+        self.lbl_valve.setStyleSheet("background-color: rgb(255, 255, 255,0);\n"
+"color: rgb(0, 0, 0);")
+        self.lbl_valve.setObjectName("lbl_valve")
+
+        self.lbl_rec_rbv = QLabel(parent=self.main_frame)
+        self.lbl_rec_rbv.setGeometry(QtCore.QRect(90, 105, 71, 21))
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.lbl_rec_rbv.sizePolicy().hasHeightForWidth())
+        self.lbl_rec_rbv.setSizePolicy(sizePolicy)
+        self.lbl_rec_rbv.setFont(self.font)
+        self.lbl_rec_rbv.setStyleSheet("background-color: rgb(0, 0, 0);\n"
+"color: rgb(0, 170, 0);")
+        self.lbl_rec_rbv.setFrameShadow(QFrame.Shadow.Sunken)
+        self.lbl_rec_rbv.setTextFormat(QtCore.Qt.TextFormat.AutoText)
+        self.lbl_rec_rbv.setScaledContents(True)
+        self.lbl_rec_rbv.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.lbl_rec_rbv.setIndent(0)
+        self.lbl_rec_rbv.setObjectName("lbl_rec_rbv")
+
+        self.lbl_rec = QLabel(parent=self.main_frame)
+        self.lbl_rec.setGeometry(QtCore.QRect(10, 100, 121, 31))
+        self.lbl_rec.setMinimumSize(QtCore.QSize(0, 31))
+        self.lbl_rec.setFont(self.font)
+        self.lbl_rec.setStyleSheet("background-color: rgb(255, 255, 255,0);\n"
+"color: rgb(0, 0, 0);")
+        self.lbl_rec.setObjectName("lbl_rec")
+
+        self.lbl_lHe_per_remain = QLabel(parent=self.main_frame)
+        self.lbl_lHe_per_remain.setGeometry(QtCore.QRect(10, 130, 121, 31))
+        self.lbl_lHe_per_remain.setMinimumSize(QtCore.QSize(0, 31))
+        self.lbl_lHe_per_remain.setFont(self.font)
+        self.lbl_lHe_per_remain.setStyleSheet("background-color: rgb(255, 255, 255,0);\n"
+"color: rgb(0, 0, 0);")
+        self.lbl_lHe_per_remain.setObjectName("lbl_lHe_per_remain")
+
+        self.lbl_lHe_per_remain_rbv = QLabel(parent=self.main_frame)
+        self.lbl_lHe_per_remain_rbv.setGeometry(QtCore.QRect(90, 135, 71, 21))
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.lbl_lHe_per_remain_rbv.sizePolicy().hasHeightForWidth())
+        self.lbl_lHe_per_remain_rbv.setSizePolicy(sizePolicy)
+        self.lbl_lHe_per_remain_rbv.setFont(self.font)
+        self.lbl_lHe_per_remain_rbv.setStyleSheet("background-color: rgb(0, 0, 0);\n"
+"color: rgb(0, 170, 0);")
+        self.lbl_lHe_per_remain_rbv.setFrameShadow(QFrame.Shadow.Sunken)
+        self.lbl_lHe_per_remain_rbv.setTextFormat(QtCore.Qt.TextFormat.AutoText)
+        self.lbl_lHe_per_remain_rbv.setScaledContents(True)
+        self.lbl_lHe_per_remain_rbv.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.lbl_lHe_per_remain_rbv.setIndent(0)
+        self.lbl_lHe_per_remain_rbv.setObjectName("lbl_lHe_per_remain_rbv")
+
+        self.pw = pg.PlotWidget(parent=self.tab1)
+        self.pw.setGeometry(QtCore.QRect(180, 39, 266, 151))
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.pw.sizePolicy().hasHeightForWidth())
+        self.pw.setSizePolicy(sizePolicy)
+        self.pw.setMaximumSize(QtCore.QSize(605, 16777215))
+        self.pw.setFont(self.font)
+        self.pw.setLayoutDirection(QtCore.Qt.LayoutDirection.LeftToRight)
+        self.pw.setStyleSheet("background-color: rgb(240, 240, 240);")
+        self.pw.setFrameShape(QFrame.Shape.NoFrame)
+        self.pw.setFrameShadow(QFrame.Shadow.Plain)
+        self.pw.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.pw.setObjectName("pw")
+
+        self.lbl_start_ltr = QLabel(parent=self.tab1)
+        self.lbl_start_ltr.setGeometry(QtCore.QRect(10, 205, 81, 31))
+        self.lbl_start_ltr.setMinimumSize(QtCore.QSize(0, 31))
+        self.lbl_start_ltr.setFont(self.font)
+        self.lbl_start_ltr.setStyleSheet("background-color: rgb(255, 255, 255,0);\n"
+"color: rgb(0, 0, 0);")
+        self.lbl_start_ltr.setObjectName("lbl_start_ltr")
+
+        self.le_start_ltr = QLineEdit(parent=self.tab1)
+        self.le_start_ltr.setValidator(QDoubleValidator())
+        self.le_start_ltr.setGeometry(QtCore.QRect(119, 209, 51, 25))
+        self.le_start_ltr.setObjectName("le_start_ltr")
+    
+        self.lbl_lHe_threshold = QLabel(parent=self.tab1)
+        self.lbl_lHe_threshold.setGeometry(QtCore.QRect(10, 235, 111, 31))
+        self.lbl_lHe_threshold.setMinimumSize(QtCore.QSize(0, 31))
+        self.lbl_lHe_threshold.setFont(self.font)
+        self.lbl_lHe_threshold.setStyleSheet("background-color: rgb(255, 255, 255,0);\n"
+"color: rgb(0, 0, 0);")
+        self.lbl_lHe_threshold.setObjectName("lbl_lHe_threshold")
+
+        self.le_lHe_threshold = QLineEdit(parent=self.tab1)
+        self.le_lHe_threshold.setValidator(QDoubleValidator())
+        self.le_lHe_threshold.setGeometry(QtCore.QRect(119, 239, 51, 25))
+        self.le_lHe_threshold.setObjectName("le_lHe_threshold")
+
+        _translate = QtCore.QCoreApplication.translate
+        self.lbl_uptime.setText(_translate("TabWidget", "uptime "))
+        self.lbl_plt_hist.setText(_translate("TabWidget", "Plot history"))
+        self.btn_clr_plots.setText(_translate("TabWidget", "CLR PLOTS"))
+        self.label.setText(_translate("TabWidget", "BACK PRESSURE CONTROLLER VIEWER"))
+        self.btn_quit.setText(_translate("TabWidget", "QUIT"))
+        self.lbl_flow_rbv.setText(_translate("TabWidget", "123"))
+        self.lbl_pressure_rbv.setText(_translate("TabWidget", "123"))
+        self.lbl_pressure.setText(_translate("TabWidget", "P [mbar]"))
+        self.lbl_flow.setText(_translate("TabWidget", "He Flow [l/m]"))
+        self.lbl_valve_rbv.setText(_translate("TabWidget", "123"))
+        self.lbl_valve.setText(_translate("TabWidget", "Valve [%]"))
+        self.lbl_rec_rbv.setText(_translate("TabWidget", "123"))
+        self.lbl_rec.setText(_translate("TabWidget", "lHe Rec [l/d]"))
+        self.lbl_lHe_per_remain.setText(_translate("TabWidget", "lHe left [%]"))
+        self.lbl_lHe_per_remain_rbv.setText(_translate("TabWidget", "123"))
+        self.lbl_start_ltr.setText(_translate("TabWidget", "lHe Start [ltr]"))
+        self.lbl_lHe_threshold.setText(_translate("TabWidget", "lHe threshold [%]"))
+
+    def tab2_ui(self, ):
         layout = QVBoxLayout()
         layout2 = QHBoxLayout()
         toolbar = NavigationToolbar(self.sc, self)
@@ -476,6 +821,7 @@ class mainWindow(QTabWidget, main_file):
         self.timer.timeout.connect(self.check_worker_thread)
         # run the main thread every 1s
         self.timer.start(MAIN_THREAD_POLL)
+        self.timer_start = perf_counter()
 
     def _exit_app(self):
         """
@@ -490,14 +836,17 @@ class mainWindow(QTabWidget, main_file):
          self.timestamp = datetime.now()
          self.lbl_pressure_rbv.setText(str(round(all_rbv[20], 3)))
          self.lbl_flow_rbv.setText(str(round(all_rbv[10], 3)))
-         self.lbl_valve_rbv.setText(str(round(all_rbv[-1], 3)))
-         rec = all_rbv[10]*60*24/(1./He_EXP_RATIO)
-         self.lbl_rec_rbv.setText(str(round(rec, 3)))
-         self.drv.write('PRESSURE', all_rbv[20])
-         self.drv.write('LHE_FLOW', rec)
-         self.drv.write('VALVE', all_rbv[-1] )
-         self.drv.write('GAS_FLOW', all_rbv[10])
-         self.drv.updatePVs()
+         self.lbl_valve_rbv.setText(str(round(all_rbv[-3], 3)))
+         # rec = all_rbv[10]*60*24/(1./He_EXP_RATIO)
+         self.lbl_rec_rbv.setText(str(round(all_rbv[-2], 3)))
+         self.lbl_lHe_per_remain_rbv.setText(str(all_rbv[-1]))
+         # write to epics pv records
+         if args.epics_pv != '':
+             self.drv.write('PRESSURE', all_rbv[20])
+             self.drv.write('LHE_FLOW', all_rbv[-2])
+             self.drv.write('VALVE', all_rbv[-2] )
+             self.drv.write('GAS_FLOW', all_rbv[10])
+             self.drv.updatePVs()
 
     def check_worker_thread(self):
         """
@@ -513,13 +862,15 @@ class mainWindow(QTabWidget, main_file):
             #print (days, hours, mins, secs)
             self.le_uptime.setText(str(days) + 'd, ' + str(hours) + \
                                   ':' + str(mins) + ':' + str(secs))
-            if not mthread.isRunning():
+            if not self.mthread.isRunning():
+                self.actual_time_taken = perf_counter() - self.timer_start
+                self.timer_start = perf_counter()
                 #logger.info("In function: " + inspect.stack()[0][3])
-                mthread.start()
+                self.mthread.start()
         except Exception as e:
             logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
-            if mthread.isRunning():
-                mthread.stop()
+            if self.mthread.isRunning():
+                self.mthread.stop()
             file_handler.close()
             self.close()
         self.fname = datadir + '\\bpc_log_' + strftime("%Y%m%d") + '.txt'
@@ -698,8 +1049,9 @@ class mainWindow(QTabWidget, main_file):
             if reply == QMessageBox.StandardButton.Yes:
                 self.quit_flag = 1
                 mybpc.close_comm()
-                server_thread.stop()
-                mthread.stop()
+                if args.epics_pv != '':
+                    server_thread.stop()
+                self.mthread.stop()
                 self.close()
                 QtCore.QCoreApplication.instance().quit
                 app.quit()
@@ -707,8 +1059,9 @@ class mainWindow(QTabWidget, main_file):
                 pass
         if self.quit_flag == 1:
             mybpc.close_comm()
-            server_thread.stop()
-            mthread.stop()
+            if args.epics_pv != '':
+                server_thread.stop()
+            self.mthread.stop()
             self.close()
             QtCore.QCoreApplication.instance().quit
             app.quit()
@@ -718,9 +1071,8 @@ def _sigint_handler(*args):
     Handler for the SIGINT signal. For testing purposes only
     """
     sys.stderr.write('\r')
-    server_thread.stop()
-    mthread.stop()
-    mainWindow.loop.close()
+    if args.epics_pv != '':
+        server_thread.stop()
     QtGui.QApplication.quit()
 
 def dir_path(save_path):
@@ -730,26 +1082,22 @@ def dir_path(save_path):
         raise ArgumentTypeError(f"readable_dir:{save_path} is not a valid path")
 
 if __name__ == '__main__':
-    # make the directory to save flow data to text file
-    datadir   = "C:" + sep + "_datacache_"
-    default_epics_pv = 'TEST:BPC' + str((randint(1, 65536)))
-   
-    if path.isdir(datadir) == False:
-        mkdir(datadir)
     # user options to run multiple instances with different configurations for example
     parser = ArgumentParser(prog = 'bpc-monitor',
                             description='Configure bpc-monitor.')
     parser.add_argument('-i', '--host', help='specify the host address', default='172.30.33.212')
     parser.add_argument('-p', '--port',  help='specify the port', default='20256', type=int)
-    parser.add_argument('-e', '--epics_pv',  help='Specify the PV epics prefix', default=default_epics_pv)
-    parser.add_argument( '-s', '--save_path', help='Specify data directory', default=datadir, type=dir_path)
+    parser.add_argument('-e', '--epics_pv',  help='Specify the PV epics prefix', default='')
+    parser.add_argument( '-s', '--save_path', help='Specify data directory', default="C:" + sep + "_datacache_", type=dir_path)
     # parser.add_argument( '-l', '--log-path', help='Specify log directory', default=logdir)
     args = parser.parse_args(sys.argv[1:])
     myserver = args.host
     port = args.port
     PV = args.epics_pv
     datadir = args.save_path
-    logger.info("In function: " +  inspect.stack()[0][3] + "EPICS PV for this server: " + str(PV))
+    if path.isdir(datadir) == False:
+        mkdir(datadir)
+    # logger.info("In function: " +  inspect.stack()[0][3] + "EPICS PV for this server: " + str(PV))
     # Handle high resolution displays:
     if hasattr(QtCore.Qt, 'AA_EnableHighDpiScaling'):
         QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
@@ -760,12 +1108,10 @@ if __name__ == '__main__':
     # create pcas server
     if not PV.endswith(':'):
         prefix = PV + ':'
-    server = SimpleServer()
-    server.createPV(prefix, pvdb)
+    if args.epics_pv != '':
+        server = SimpleServer()
+        server.createPV(prefix, pvdb)
     mybpc = Vision130.Vision130Driver(myserver, port)
-    # start the main thread
-    mthread = mainThread()
-    mthread.start()
     # Create the main window
     main_window = mainWindow()
     # Remove the title bar and set to fixed geometry to match our touch screen display
@@ -777,8 +1123,9 @@ if __name__ == '__main__':
     # handle ctrl+c event
     signal.signal(signal.SIGINT, _sigint_handler)
     # create pcas server thread and shut down when app exits
-    server_thread = ServerThread(server)
-    # start pcas and gui event loop
-    server_thread.start()
+    if args.epics_pv != '':
+        server_thread = ServerThread(server)
+        # start pcas event loop
+        server_thread.start()
     # Start the GUI thread
     sys.exit(app.exec())

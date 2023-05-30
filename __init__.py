@@ -5,7 +5,7 @@ __maintainer__ 	=       "Alireza Panna"
 __email__ 	=       "alireza.panna@nist.gov"
 __status__ 	=       "Stable"
 __date__        =       "03/25/2023"
-__version__     =       "1.1"
+__version__     =       "1.2"
 
 TODO            =
 CHANGELOG       =       """
@@ -30,4 +30,6 @@ CHANGELOG       =       """
                                 upgrade to version 0.9
                         052223: Added pcas server to broadcast PV data, change He expansion ratio to 754.2, using config files again, update version to 1.0
                         052523: Added argparse to handle user options/inputs. Update to 1.1
+                        053023: Added calculation to est how much lHe remains in the dewar, Added menubar to show information about the program, updated default arguments
+                                to not start the pcas server if the PV variable is not set update version to 1.2
                         """
