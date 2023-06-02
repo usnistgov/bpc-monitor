@@ -1,27 +1,27 @@
 #! /usr/bin/env python
+# Note: For the CCC dewars: 1 inch of lHe is 1 Ltr of lHe
 import sys
 from os import environ, chdir, sep, path, mkdir, getcwd, scandir
 from argparse import ArgumentParser, ArgumentTypeError
-from random import randint
 
 try:
     environ["QT_API"] = "pyqt6"
     from PyQt6 import QtCore, QtGui
-    from PyQt6.QtCore import pyqtSignal, QTimer, QThread, QSettings, QObject, QRect, QSize
+    from PyQt6.QtCore import pyqtSignal, QTimer, QThread, QSettings, QObject, QRect
     from PyQt6.QtGui import QAction, QFont, QDoubleValidator
     from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,\
-                                QLabel, QPushButton, QComboBox,\
-                                QMessageBox, QMenu, QSystemTrayIcon, QStyle, QTabWidget,
+                                QLabel, QPushButton, QComboBox,QMessageBox, \
+                                QSystemTrayIcon, QStyle, QTabWidget, \
                                 QLineEdit, QFrame, QSizePolicy, QMenuBar, QMenu, QTextEdit)
     pixmapi = QStyle.StandardPixmap.SP_TitleBarMenuButton
 except ImportError:
     environ["QT_API"] = "pyqt5"
     from PyQt5 import QtCore, QtGui
     from PyQt5.QtGui import QFont, QDoubleValidator
-    from PyQt5.QtCore import pyqtSignal, QTimer, QThread, QSettings, QObject, QRect, QSize
+    from PyQt5.QtCore import pyqtSignal, QTimer, QThread, QSettings, QObject, QRect
     from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,\
-                                QLabel, QPushButton, QComboBox, \
-                                QMessageBox, QSystemTrayIcon, QStyle, QMenu, QAction, QTabWidget,
+                                QLabel, QPushButton, QComboBox, QMessageBox, \
+                                QSystemTrayIcon, QStyle, QAction, QTabWidget,
                                 QLineEdit, QFrame, QSizePolicy, QMenuBar, QMenu, QTextEdit)
     pixmapi = QStyle.SP_TitleBarMenuButton
 
@@ -81,7 +81,7 @@ file_handler.setFormatter(fmt)
 logger.addHandler(file_handler)
 
 # python globals
-__version__ = '1.2' # Program version string
+__version__ = '1.21' # Program version string
 MAIN_THREAD_POLL = 1000 # in ms
 He_EXP_RATIO = 1./754.2 # liquid to gas expansion ratio for Helium at 1 atm and 70 F
 WIDTH = 450
@@ -137,11 +137,11 @@ style = """QTabWidget::tab-bar{
 pvdb = {
         'PRESSURE': {'prec'  : 3,
                      'unit'  : 'mbar'},
-        'LHE_FLOW': {'prec'  : 6,
+        'LHE_RECOVERED': {'prec'  : 6,
                      'unit'  : 'l/day'},
         'VALVE': {'prec'  : 0,
                      'unit'  : '%'},
-        'GAS_FLOW': {'prec'  : 6,
+        'HE_FLOW': {'prec'  : 6,
                      'unit'  : 'l/min'},
         }
 
@@ -210,29 +210,33 @@ class mainThread(QThread, QObject):
         global MAIN_THREAD_POLL
         try:
             #logger.info("In function: " + inspect.stack()[0][3])
-            start_analysis = perf_counter()
             all_rbv = self._getRbvs()
             rec = all_rbv[10]*60*24/(1./He_EXP_RATIO)
             all_rbv.insert(len(all_rbv), rec)
             if main_window.le_start_ltr.text() != '':
                 start_lHe = float(main_window.le_start_ltr.text())
-                if start_lHe >= 0:
-                    self.lHe_summer.append((rec/86400.0)*main_window.actual_time_taken)
-                    current_lHe = sum(self.lHe_summer)
-                    remaining_lHe_perc = 100.0 - (current_lHe/start_lHe)*100
-                    all_rbv.insert(len(all_rbv), str(round(remaining_lHe_perc, 4)))
-                    if main_window.le_lHe_threshold.text() != '':
-                         if remaining_lHe_perc <= float(main_window.le_lHe_threshold.text()):
-                             main_window.lbl_lHe_per_remain_rbv.setStyleSheet("color: red; background-color: black;")
-                         else:
-                             main_window.lbl_lHe_per_remain_rbv.setStyleSheet("color: rgb(0, 170, 0); background-color: black;")
+                if start_lHe > 0:
+                    if rec != NaN:
+                        try:
+                            self.lHe_summer.append((rec/86400.0)*main_window.actual_time_taken)
+                            current_lHe = sum(self.lHe_summer)
+                            remaining_lHe_perc = 100.0 - (current_lHe/start_lHe)*100
+                            all_rbv.insert(len(all_rbv), str(round(remaining_lHe_perc, 4)))
+                        except Exception as e:
+                            logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
+                            pass
+                        if main_window.le_lHe_threshold.text() != '':
+                            if remaining_lHe_perc <= float(main_window.le_lHe_threshold.text()):
+                                main_window.lbl_lHe_per_remain_rbv.setStyleSheet("color: red; background-color: black;")
+                            else:
+                                main_window.lbl_lHe_per_remain_rbv.setStyleSheet("color: rgb(0, 170, 0); background-color: black;")
                 else:
                     all_rbv.insert(len(all_rbv), '')
                     self.lHe_summer = []
             else:
                 all_rbv.insert(len(all_rbv), '')
                 self.lHe_summer = []
-            
+
             #print (all_rbv)
             self.update_data.emit(all_rbv)
             self.plot_temp.emit()
@@ -250,7 +254,7 @@ class mainThread(QThread, QObject):
         self.quit()
 
 class aboutWindow(QWidget):
-    
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("About")
@@ -262,12 +266,11 @@ class aboutWindow(QWidget):
         self.te_about.append("Email: alireza.panna@nist.gov & frank.seifert@nist.gov")
         self.te_about.append("EPICS PV for this server: " + str(args.epics_pv))
         self.te_about.append("Current data folder: " + str(args.save_path))
-    
+
         layout = QVBoxLayout()
         layout.addWidget(self.te_about)
         self.setLayout(layout)
-        
-        
+
 class mainWindow(QTabWidget):
 
     def __init__(self):
@@ -289,7 +292,7 @@ class mainWindow(QTabWidget):
         # self.tab3_ui()
         self.setFixedSize(WIDTH, HEIGHT)
         self.tray_icon = None
-        # program flags 
+        # program flags
         self.quit_flag = 0
         self.draw_bpc_flag = 0
         self.timestamp = datetime.now()
@@ -325,12 +328,12 @@ class mainWindow(QTabWidget):
         show_action.triggered.connect(self.show)
         quit_action.triggered.connect(self._exit_app)
         hide_action.triggered.connect(self.hide)
-        
+
         self.close_action = QAction("&Quit", self)
         self.close_action.setStatusTip("Quit this program")
         self.close_action.setShortcut("Ctrl + Q")
         self.close_action.triggered.connect(self.quit)
-        
+
         self.about_action = QAction("&About", self)
         self.about_action.setStatusTip("Program information & license")
         self.about_action.triggered.connect(self._about)
@@ -347,27 +350,31 @@ class mainWindow(QTabWidget):
             self.drv = myDriver()
         #logger.info ("In function: " + inspect.stack()[0][3])
         self.start_time = time()
-        
+
     def _create_menubar(self, ):
         self.menuBar = QMenuBar(self)
         self.file_menu = self.menuBar.addMenu("&File")
         self.file_menu.addAction(self.close_action)
         self.help_menu = self.menuBar.addMenu("&Help")
         self.help_menu.addAction(self.about_action)
-    
+
     def _about(self,):
         self.about_window = aboutWindow()
         self.about_window.show()
-        
+
     def tab1_ui(self, ):
         """
         converted using pyuic
         """
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+
         self.lbl_uptime = QLabel(parent=self.tab1)
         self.lbl_uptime.setGeometry(QRect(30, 297, 41, 20))
         self.lbl_uptime.setFont(self.font)
         self.lbl_uptime.setObjectName("lbl_uptime")
-        
+
         self.lbl_plt_hist = QLabel(parent=self.tab1)
         self.lbl_plt_hist.setGeometry(QRect(15, 257, 71, 20))
         self.lbl_plt_hist.setFont(self.font)
@@ -375,9 +382,6 @@ class mainWindow(QTabWidget):
 
         self.pw_2 = pg.PlotWidget(parent=self.tab1)
         self.pw_2.setGeometry(QRect(180, 190, 266, 161))
-        sizePolicy = QSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        sizePolicy.setHorizontalStretch(0)
-        sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.pw_2.sizePolicy().hasHeightForWidth())
         self.pw_2.setSizePolicy(sizePolicy)
         self.pw_2.setMaximumSize(QtCore.QSize(605, 16777215))
@@ -398,7 +402,7 @@ class mainWindow(QTabWidget):
         self.btn_clr_plots.setGeometry(QtCore.QRect(100, 272, 75, 31))
         self.btn_clr_plots.setFont(self.font)
         self.btn_clr_plots.setStyleSheet("background-color: rgb(0, 170, 0);\n"
-"color: rgb(255, 255, 255);")
+                                         "color: rgb(255, 255, 255);")
         self.btn_clr_plots.setObjectName("btn_clr_plots")
 
         self.le_uptime = QLineEdit(parent=self.tab1)
@@ -406,7 +410,7 @@ class mainWindow(QTabWidget):
         self.le_uptime.setFont(self.font)
         self.le_uptime.setLayoutDirection(QtCore.Qt.LayoutDirection.RightToLeft)
         self.le_uptime.setStyleSheet("background-color: rgb(0, 0, 0);\n"
-"color: rgb(0, 170, 0);")
+                                     "color: rgb(0, 170, 0);")
         self.le_uptime.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.le_uptime.setObjectName("le_uptime")
 
@@ -418,7 +422,7 @@ class mainWindow(QTabWidget):
         font.setBold(False)
         self.label.setFont(font)
         self.label.setStyleSheet("background-color: rgb(150, 150, 150);\n"
-"color: rgb(255, 255, 255);")
+                                 "color: rgb(255, 255, 255);")
         self.label.setFrameShape(QFrame.Shape.Panel)
         self.label.setFrameShadow(QFrame.Shadow.Raised)
         self.label.setLineWidth(3)
@@ -431,22 +435,18 @@ class mainWindow(QTabWidget):
         self.btn_quit.setGeometry(QtCore.QRect(100, 320, 75, 31))
         self.btn_quit.setFont(self.font)
         self.btn_quit.setStyleSheet("background-color: rgb(255, 0, 0);\n"
-"color: rgb(255, 255, 255);")
+                                    "color: rgb(255, 255, 255);")
         self.btn_quit.setObjectName("btn_quit")
 
         self.main_frame = QFrame(parent=self.tab1)
         self.main_frame.setEnabled(True)
         self.main_frame.setGeometry(QtCore.QRect(5, 35, 171, 170))
-        sizePolicy = QSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        sizePolicy.setHorizontalStretch(0)
-        sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.main_frame.sizePolicy().hasHeightForWidth())
         self.main_frame.setSizePolicy(sizePolicy)
         self.main_frame.setMinimumSize(QtCore.QSize(150, 170))
         self.main_frame.setMaximumSize(QtCore.QSize(181, 170))
         self.main_frame.setAutoFillBackground(True)
-        self.main_frame.setStyleSheet("background-color: rgb(140, 140, 140, 150);\n"
-"")
+        self.main_frame.setStyleSheet("background-color: rgb(140, 140, 140, 150);")
         self.main_frame.setFrameShape(QFrame.Shape.Box)
         self.main_frame.setFrameShadow(QFrame.Shadow.Raised)
         self.main_frame.setLineWidth(3)
@@ -454,31 +454,25 @@ class mainWindow(QTabWidget):
 
         self.lbl_flow_rbv = QLabel(parent=self.main_frame)
         self.lbl_flow_rbv.setGeometry(QtCore.QRect(90, 45, 71, 21))
-        sizePolicy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        sizePolicy.setHorizontalStretch(0)
-        sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.lbl_flow_rbv.sizePolicy().hasHeightForWidth())
         self.lbl_flow_rbv.setSizePolicy(sizePolicy)
         self.lbl_flow_rbv.setFont(self.font)
         self.lbl_flow_rbv.setStyleSheet("background-color: rgb(0, 0, 0);\n"
-"color: rgb(0, 170, 0);")
+                                        "color: rgb(0, 170, 0);")
         self.lbl_flow_rbv.setFrameShadow(QFrame.Shadow.Sunken)
         self.lbl_flow_rbv.setTextFormat(QtCore.Qt.TextFormat.AutoText)
         self.lbl_flow_rbv.setScaledContents(True)
         self.lbl_flow_rbv.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.lbl_flow_rbv.setIndent(0)
         self.lbl_flow_rbv.setObjectName("lbl_flow_rbv")
-    
+
         self.lbl_pressure_rbv = QLabel(parent=self.main_frame)
         self.lbl_pressure_rbv.setGeometry(QtCore.QRect(90, 15, 71, 21))
-        sizePolicy = QSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
-        sizePolicy.setHorizontalStretch(0)
-        sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.lbl_pressure_rbv.sizePolicy().hasHeightForWidth())
         self.lbl_pressure_rbv.setSizePolicy(sizePolicy)
         self.lbl_pressure_rbv.setFont(self.font)
         self.lbl_pressure_rbv.setStyleSheet("background-color: rgb(0, 0, 0);\n"
-"color: rgb(0, 170, 0);")
+                                            "color: rgb(0, 170, 0);")
         self.lbl_pressure_rbv.setFrameShadow(QFrame.Shadow.Sunken)
         self.lbl_pressure_rbv.setTextFormat(QtCore.Qt.TextFormat.AutoText)
         self.lbl_pressure_rbv.setScaledContents(True)
@@ -490,26 +484,23 @@ class mainWindow(QTabWidget):
         self.lbl_pressure.setGeometry(QtCore.QRect(10, 10, 81, 31))
         self.lbl_pressure.setFont(self.font)
         self.lbl_pressure.setStyleSheet("background-color: rgb(255, 255, 255,0);\n"
-"color: rgb(255, 0, 0);")
+                                        "color: rgb(255, 0, 0);")
         self.lbl_pressure.setObjectName("lbl_pressure")
 
         self.lbl_flow = QLabel(parent=self.main_frame)
         self.lbl_flow.setGeometry(QtCore.QRect(10, 40, 121, 31))
         self.lbl_flow.setFont(self.font)
         self.lbl_flow.setStyleSheet("background-color: rgb(255, 255, 255,0);\n"
-"color: rgb(0, 0, 255);")
+                                    "color: rgb(0, 0, 255);")
         self.lbl_flow.setObjectName("lbl_flow")
 
         self.lbl_valve_rbv = QLabel(parent=self.main_frame)
         self.lbl_valve_rbv.setGeometry(QtCore.QRect(90, 75, 71, 21))
-        sizePolicy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        sizePolicy.setHorizontalStretch(0)
-        sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.lbl_valve_rbv.sizePolicy().hasHeightForWidth())
         self.lbl_valve_rbv.setSizePolicy(sizePolicy)
         self.lbl_valve_rbv.setFont(self.font)
         self.lbl_valve_rbv.setStyleSheet("background-color: rgb(0, 0, 0);\n"
-"color: rgb(0, 170, 0);")
+                                         "color: rgb(0, 170, 0);")
         self.lbl_valve_rbv.setFrameShadow(QFrame.Shadow.Sunken)
         self.lbl_valve_rbv.setTextFormat(QtCore.Qt.TextFormat.AutoText)
         self.lbl_valve_rbv.setScaledContents(True)
@@ -521,19 +512,16 @@ class mainWindow(QTabWidget):
         self.lbl_valve.setGeometry(QtCore.QRect(10, 70, 81, 31))
         self.lbl_valve.setFont(self.font)
         self.lbl_valve.setStyleSheet("background-color: rgb(255, 255, 255,0);\n"
-"color: rgb(0, 0, 0);")
+                                     "color: rgb(0, 0, 0);")
         self.lbl_valve.setObjectName("lbl_valve")
 
         self.lbl_rec_rbv = QLabel(parent=self.main_frame)
         self.lbl_rec_rbv.setGeometry(QtCore.QRect(90, 105, 71, 21))
-        sizePolicy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        sizePolicy.setHorizontalStretch(0)
-        sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.lbl_rec_rbv.sizePolicy().hasHeightForWidth())
         self.lbl_rec_rbv.setSizePolicy(sizePolicy)
         self.lbl_rec_rbv.setFont(self.font)
         self.lbl_rec_rbv.setStyleSheet("background-color: rgb(0, 0, 0);\n"
-"color: rgb(0, 170, 0);")
+                                       "color: rgb(0, 170, 0);")
         self.lbl_rec_rbv.setFrameShadow(QFrame.Shadow.Sunken)
         self.lbl_rec_rbv.setTextFormat(QtCore.Qt.TextFormat.AutoText)
         self.lbl_rec_rbv.setScaledContents(True)
@@ -546,7 +534,7 @@ class mainWindow(QTabWidget):
         self.lbl_rec.setMinimumSize(QtCore.QSize(0, 31))
         self.lbl_rec.setFont(self.font)
         self.lbl_rec.setStyleSheet("background-color: rgb(255, 255, 255,0);\n"
-"color: rgb(0, 0, 0);")
+                                   "color: rgb(0, 0, 0);")
         self.lbl_rec.setObjectName("lbl_rec")
 
         self.lbl_lHe_per_remain = QLabel(parent=self.main_frame)
@@ -554,19 +542,16 @@ class mainWindow(QTabWidget):
         self.lbl_lHe_per_remain.setMinimumSize(QtCore.QSize(0, 31))
         self.lbl_lHe_per_remain.setFont(self.font)
         self.lbl_lHe_per_remain.setStyleSheet("background-color: rgb(255, 255, 255,0);\n"
-"color: rgb(0, 0, 0);")
+                                              "color: rgb(0, 0, 0);")
         self.lbl_lHe_per_remain.setObjectName("lbl_lHe_per_remain")
 
         self.lbl_lHe_per_remain_rbv = QLabel(parent=self.main_frame)
         self.lbl_lHe_per_remain_rbv.setGeometry(QtCore.QRect(90, 135, 71, 21))
-        sizePolicy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        sizePolicy.setHorizontalStretch(0)
-        sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.lbl_lHe_per_remain_rbv.sizePolicy().hasHeightForWidth())
         self.lbl_lHe_per_remain_rbv.setSizePolicy(sizePolicy)
         self.lbl_lHe_per_remain_rbv.setFont(self.font)
         self.lbl_lHe_per_remain_rbv.setStyleSheet("background-color: rgb(0, 0, 0);\n"
-"color: rgb(0, 170, 0);")
+                                                  "color: rgb(0, 170, 0);")
         self.lbl_lHe_per_remain_rbv.setFrameShadow(QFrame.Shadow.Sunken)
         self.lbl_lHe_per_remain_rbv.setTextFormat(QtCore.Qt.TextFormat.AutoText)
         self.lbl_lHe_per_remain_rbv.setScaledContents(True)
@@ -576,9 +561,6 @@ class mainWindow(QTabWidget):
 
         self.pw = pg.PlotWidget(parent=self.tab1)
         self.pw.setGeometry(QtCore.QRect(180, 39, 266, 151))
-        sizePolicy = QSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        sizePolicy.setHorizontalStretch(0)
-        sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.pw.sizePolicy().hasHeightForWidth())
         self.pw.setSizePolicy(sizePolicy)
         self.pw.setMaximumSize(QtCore.QSize(605, 16777215))
@@ -595,20 +577,20 @@ class mainWindow(QTabWidget):
         self.lbl_start_ltr.setMinimumSize(QtCore.QSize(0, 31))
         self.lbl_start_ltr.setFont(self.font)
         self.lbl_start_ltr.setStyleSheet("background-color: rgb(255, 255, 255,0);\n"
-"color: rgb(0, 0, 0);")
+                                         "color: rgb(0, 0, 0);")
         self.lbl_start_ltr.setObjectName("lbl_start_ltr")
 
         self.le_start_ltr = QLineEdit(parent=self.tab1)
         self.le_start_ltr.setValidator(QDoubleValidator())
         self.le_start_ltr.setGeometry(QtCore.QRect(119, 209, 51, 25))
         self.le_start_ltr.setObjectName("le_start_ltr")
-    
+
         self.lbl_lHe_threshold = QLabel(parent=self.tab1)
         self.lbl_lHe_threshold.setGeometry(QtCore.QRect(10, 235, 111, 31))
         self.lbl_lHe_threshold.setMinimumSize(QtCore.QSize(0, 31))
         self.lbl_lHe_threshold.setFont(self.font)
         self.lbl_lHe_threshold.setStyleSheet("background-color: rgb(255, 255, 255,0);\n"
-"color: rgb(0, 0, 0);")
+                                             "color: rgb(0, 0, 0);")
         self.lbl_lHe_threshold.setObjectName("lbl_lHe_threshold")
 
         self.le_lHe_threshold = QLineEdit(parent=self.tab1)
@@ -715,7 +697,7 @@ class mainWindow(QTabWidget):
             i = 0
             for filename in scandir(datadir + '\\'):
                 self.filename = filename.name
-                
+
                 if filename.name != '':
                     if self.cb_time.currentText() == 'all':
                         mydata.append(self._read_helper(datadir + sep + filename.name))
