@@ -2,10 +2,10 @@ __author__      =       "Alireza Panna &  Frank Seifert"
 __copyright__ 	=       "This data is publicly available according to the NIST statements of copyright, fair use and licensing; see https://www.nist.gov/director/copyright-fair-use-and-licensing-statements-srd-data-and-software"
 __license__ 	=       "NIST"
 __maintainer__ 	=       "Alireza Panna"
-__email__ 	=       "alireza.panna@nist.gov"
-__status__ 	=       "Stable"
+__email__ 	    =       "alireza.panna@nist.gov"
+__status__ 	    =       "Stable"
 __date__        =       "03/25/2023"
-__version__     =       "1.3"
+__version__     =       "1.4"
 
 TODO            =
 CHANGELOG       =       """
@@ -35,4 +35,6 @@ CHANGELOG       =       """
                         060223: General cleanup, fix some bugs, update to 1.21
                         061423: Various bug-fixes, added readback to estimate days before lHe at threshold defined by user, 
                                 update version to 1.3
+                        061523: Handle thread termination more gracefully, no longer using QTimer to run the thread to fix GUI freeze issue
+                                Update version to 1.4
                         """

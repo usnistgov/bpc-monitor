@@ -28,7 +28,7 @@ except ImportError:
 import pyqtgraph as pg
 from collections import deque
 from datetime import datetime, timedelta
-from time import strftime, time, perf_counter
+from time import strftime, time, perf_counter, sleep
 import inspect, signal
 # controller class
 import Vision130
@@ -80,7 +80,7 @@ file_handler.setFormatter(fmt)
 logger.addHandler(file_handler)
 
 # python globals
-__version__ = '1.3' # Program version string
+__version__ = '1.4' # Program version string
 MAIN_THREAD_POLL = 1000 # in ms
 He_EXP_RATIO = 1./754.2 # liquid to gas expansion ratio for Helium at 1 atm and 70 F
 WIDTH = 450
@@ -184,6 +184,8 @@ class mainThread(QThread, QObject):
         self.setTerminationEnabled(True)
         # self.lHe_summer = []
         self.integrated_lHe_used = 0.0
+        self._kill = False
+        self.loop_time = 0
 
     def __del__(self):
         """
@@ -209,70 +211,75 @@ class mainThread(QThread, QObject):
           MAIN_THREAD_POLL
         """
         global MAIN_THREAD_POLL
-        try:
-            #logger.info("In function: " + inspect.stack()[0][3])
-            start_time = perf_counter()
-            all_rbv = self._getRbvs()
-            call_time_to_threshold = ''
-            rec = all_rbv[10]*60*24/(1./He_EXP_RATIO)
-            all_rbv.insert(len(all_rbv), rec)
-            if main_window.le_start_ltr.text() != '':
-                # get the starting lHe from user
-                start_lHe = float(main_window.le_start_ltr.text())
-                if start_lHe > 0:
-                    if rec != NaN:
-                        try:
-                            # instantaneous lHe being used in litres/sec
-                            inst_lHe_used = (rec/86400.0)*main_window.actual_time_taken
-                            # self.lHe_summer.append((rec/86400.0)*main_window.actual_time_taken)
-                            # integrated lHe being used in liters
-                            self.integrated_lHe_used = self.integrated_lHe_used + inst_lHe_used
-                            # remaining lHe in dewar in percent
-                            remaining_lHe_perc = 100.0 - (self.integrated_lHe_used/start_lHe)*100.0
-                            # print ("Integrated: ", self.integrated_lHe_used, "Remaining %:", remaining_lHe_perc)
-                            if remaining_lHe_perc <= 0:
-                                all_rbv.insert(len(all_rbv), str(0))
-                                main_window.le_start_ltr.setText(str(0))
+        while 1 and not self._kill:
+            try:
+                #logger.info("In function: " + inspect.stack()[0][3])
+                start_time = perf_counter()
+                all_rbv = self._getRbvs()
+                calc_time_to_threshold = ''
+                rec = all_rbv[10]*60*24/(1./He_EXP_RATIO)
+                all_rbv.insert(len(all_rbv), rec)
+                if main_window.le_start_ltr.text() != '':
+                    # get the starting lHe from user
+                    start_lHe = float(main_window.le_start_ltr.text())
+                    if start_lHe > 0:
+                        if rec != NaN:
+                            try:
+                                # instantaneous lHe being used in litres/sec
+                                inst_lHe_used = (rec/86400.0)*self.loop_time
+                                # self.lHe_summer.append((rec/86400.0)*main_window.actual_time_taken)
+                                # integrated lHe being used in liters
+                                self.integrated_lHe_used = self.integrated_lHe_used + inst_lHe_used
+                                # remaining lHe in dewar in percent
+                                remaining_lHe_perc = 100.0 - (self.integrated_lHe_used/start_lHe)*100.0
+                                # print ("Integrated: ", self.integrated_lHe_used, "Remaining %:", remaining_lHe_perc)
+                                if remaining_lHe_perc <= 0:
+                                    all_rbv.insert(len(all_rbv), str(0))
+                                    main_window.le_start_ltr.setText(str(0))
+                                else:
+                                    all_rbv.insert(len(all_rbv), str(round(remaining_lHe_perc, 4)))
+                            except Exception as e:
+                                logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
+                                pass
+                            if main_window.le_lHe_threshold.text() != '':
+                                start_lHe_threshold_corr = start_lHe - float(main_window.le_lHe_threshold.text())*0.01*start_lHe
+                                calc_time_to_threshold = str(round(((start_lHe_threshold_corr - self.integrated_lHe_used)/rec), 2))
+                                if remaining_lHe_perc <= float(main_window.le_lHe_threshold.text()):
+                                    main_window.lbl_lHe_per_remain_rbv.setStyleSheet("color: red; background-color: black;")
+                                else:
+                                    main_window.lbl_lHe_per_remain_rbv.setStyleSheet("color: rgb(0, 170, 0); background-color: black;")
                             else:
-                                all_rbv.insert(len(all_rbv), str(round(remaining_lHe_perc, 4)))
-                        except Exception as e:
-                            logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
-                            pass
-                        if main_window.le_lHe_threshold.text() != '':
-                            calc_time_to_threshold = str(round(((start_lHe - self.integrated_lHe_used)/rec), 2))
-                            if remaining_lHe_perc <= float(main_window.le_lHe_threshold.text()):
-                                main_window.lbl_lHe_per_remain_rbv.setStyleSheet("color: red; background-color: black;")
-                            else:
-                                main_window.lbl_lHe_per_remain_rbv.setStyleSheet("color: rgb(0, 170, 0); background-color: black;")
-                        else:
-                            calc_time_to_threshold = ''
+                                calc_time_to_threshold = ''
+                    else:
+                        all_rbv.insert(len(all_rbv), '')
+                        calc_time_to_threshold = ''
+                        self.integrated_lHe_used = 0
                 else:
                     all_rbv.insert(len(all_rbv), '')
                     calc_time_to_threshold = ''
                     self.integrated_lHe_used = 0
-            else:
-                all_rbv.insert(len(all_rbv), '')
-                calc_time_to_threshold = ''
-                self.integrated_lHe_used = 0
-            #print (all_rbv)
-            self.update_data.emit(all_rbv)
-            self.plot_temp.emit()
-            self.lHe_est_time_to_threshold.emit(calc_time_to_threshold)
-            #print ("Time taken to execute: ", perf_counter() - start_time )
-        except Exception as e:
-            self.update_data.emit(all_rbv)
-            self.plot_temp.emit()
-            self.lHe_est_time_to_threshold.emit(calc_time_to_threshold)
-            logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
-            pass
+                self.update_data.emit(all_rbv)
+                self.plot_temp.emit()
+                self.lHe_est_time_to_threshold.emit(calc_time_to_threshold)
+                #print ("Time taken to execute: ", perf_counter() - start_time )
+            except Exception as e:
+                self.update_data.emit(all_rbv)
+                self.plot_temp.emit()
+                self.lHe_est_time_to_threshold.emit(calc_time_to_threshold)
+                logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
+                pass
+            # makes sure that the GUI thread gets processed
+            # app.processEvents()
+            sleep(MAIN_THREAD_POLL*0.001)
+            self.loop_time = perf_counter() - start_time
 
     def stop(self):
         """
-        Stops the main thread
+        Stops the main thread gracefully
         """
-        #logger.info("In function: " + inspect.stack()[0][3])
-        file_handler.close()
+        self._kill = True
         self.quit()
+        self.wait()
 
 class aboutWindow(QWidget):
 
@@ -619,14 +626,14 @@ class mainWindow(QTabWidget):
         self.le_lHe_threshold.setValidator(QDoubleValidator())
         self.le_lHe_threshold.setGeometry(QtCore.QRect(119, 234, 51, 25))
         self.le_lHe_threshold.setObjectName("le_lHe_threshold")
-        
+
         self.lbl_lHe_threshold_time_est = QLabel(parent=self.tab1)
         self.lbl_lHe_threshold_time_est.setGeometry(QtCore.QRect(30, 260, 131, 31))
         self.lbl_lHe_threshold_time_est.setFont(self.font)
         self.lbl_lHe_threshold_time_est.setStyleSheet("background-color: rgb(255, 255, 255,0);\n"
                                                       "color: rgb(0, 0, 0);")
         self.lbl_lHe_threshold_time_est.setObjectName("lbl_lHe_threshold_time_est")
-    
+
         self.lbl_lHe_threshold_time_est_rbv = QLabel(parent=self.tab1)
         self.lbl_lHe_threshold_time_est_rbv.setGeometry(QtCore.QRect(30, 290, 130, 21))
         sizePolicy.setHeightForWidth(self.lbl_lHe_threshold_time_est_rbv.sizePolicy().hasHeightForWidth())
@@ -661,7 +668,7 @@ class mainWindow(QTabWidget):
         self.lbl_lHe_threshold.setText(_translate("TabWidget", "lHe threshold [%]"))
         self.lbl_lHe_threshold_time_est.setText(_translate("TabWidget", "Est. time to threshold"))
         self.lbl_lHe_threshold_time_est_rbv.setText(_translate("TabWidget", "123"))
-        
+
     def tab2_ui(self, ):
         layout = QVBoxLayout()
         layout2 = QHBoxLayout()
@@ -837,14 +844,14 @@ class mainWindow(QTabWidget):
 
     def show(self):
         """
-        Show the main window and connect to signals coming from various threads
+        Show the main window and start the timer to perform uptime task
         """
         global MAIN_THREAD_POLL
         #logger.info("In function: " + inspect.stack()[0][3])
         QMainWindow.show(self)
         self.sc.fig.tight_layout()
         # self.timer.setTimerType(QtCore.Qt.PreciseTimer)
-        self.timer.timeout.connect(self.check_worker_thread)
+        self.timer.timeout.connect(self.calc_uptime)
         # run the main thread every 1s
         self.timer.start(MAIN_THREAD_POLL)
         self.timer_start = perf_counter()
@@ -874,18 +881,16 @@ class mainWindow(QTabWidget):
                  self.drv.write('VALVE', all_rbv[-2] )
                  self.drv.write('HE_FLOW', all_rbv[10])
                  self.drv.updatePVs()
-             app.processEvents()
          except Exception as e:
              logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
              pass
-        
+
     def set_est_lHe(self, calc_time_to_threshold):
         self.lbl_lHe_threshold_time_est_rbv.setText(calc_time_to_threshold + ' days')
-        app.processEvents()
-        
-    def check_worker_thread(self):
+
+    def calc_uptime(self):
         """
-        A QTimer is used to run the main thread every 1 s.
+        A QTimer is used to calculate uptime every second.
         We also use this to update the filename of the data file
         """
         try:
@@ -894,21 +899,20 @@ class mainWindow(QTabWidget):
             hours = int((up.seconds/3600)%24)
             mins = int((up.seconds/60)%60)
             secs = int(up.seconds%60)
-            #print (days, hours, mins, secs)
             self.le_uptime.setText(str(days) + 'd, ' + str(hours) + \
                                   ':' + str(mins) + ':' + str(secs))
-            if not self.mthread.isRunning():
-                self.actual_time_taken = perf_counter() - self.timer_start
-                self.timer_start = perf_counter()
-                #logger.info("In function: " + inspect.stack()[0][3])
-                self.mthread.start()
+            self.fname = datadir + '\\bpc_log_' + strftime("%Y%m%d") + '.txt'
+            # if not self.mthread.isRunning():
+            #     self.actual_time_taken = perf_counter() - self.timer_start
+            #     self.timer_start = perf_counter()
+            #     #logger.info("In function: " + inspect.stack()[0][3])
+            #     self.mthread.start()
         except Exception as e:
             logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
-            if self.mthread.isRunning():
-                self.mthread.stop()
-            file_handler.close()
-            self.close()
-        self.fname = datadir + '\\bpc_log_' + strftime("%Y%m%d") + '.txt'
+            # if self.mthread.isRunning():
+            #     self.mthread.stop()
+            pass
+
 
     def set_plot_history(self):
         global HIST
@@ -1055,7 +1059,7 @@ class mainWindow(QTabWidget):
                 "BPC Monitor",
                 "Application was minimized to tray",
                 QSystemTrayIcon.MessageIcon.Information,
-                1000
+                msecs=500
             )
             event.ignore()
         if self.quit_flag == 1:
@@ -1063,7 +1067,7 @@ class mainWindow(QTabWidget):
                 "BPC Monitor",
                 "Terminating the application",
                 QSystemTrayIcon.MessageIcon.Information,
-                1000
+                msecs=500
             )
             self.tray_icon.hide()
             del self.tray_icon
@@ -1087,6 +1091,7 @@ class mainWindow(QTabWidget):
                 if PV != '':
                     server_thread.stop()
                 self.mthread.stop()
+                file_handler.close()
                 self.close()
                 QtCore.QCoreApplication.instance().quit
                 app.quit()
@@ -1097,6 +1102,7 @@ class mainWindow(QTabWidget):
             if PV != '':
                 server_thread.stop()
             self.mthread.stop()
+            file_handler.close()
             self.close()
             QtCore.QCoreApplication.instance().quit
             app.quit()
