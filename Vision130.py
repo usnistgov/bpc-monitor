@@ -13,8 +13,12 @@ from numpy import NaN
 class Vision130Driver:
     
     def __init__(self, host, port):
+        self.host = host
+        self.port = port
+        self._connect()
+
+    def _connect(self,):
         try:
-            
             self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.s.settimeout(1)
             print ("Socket successfully created")
@@ -22,7 +26,7 @@ class Vision130Driver:
             print ("socket creation failed with error %s" %(err))
         self.eol = b'\r'
         try:
-            self.s.connect((host, int(port)))
+            self.s.connect((self.host, int(self.port)))
         except Exception as e:
             self.s.close()
             print ("Could not connect with socket-server (host/port error): %s" % e)
@@ -70,10 +74,9 @@ class Vision130Driver:
         except:
             # try to reconnect
             self.close_comm()
-            self.__init__(host, int(port))
+            self._connect()
             return [NaN]*24
-        
-    
+
     def _calc_checksum(self, message):
         msg_list = [*message]
         mysum = 0
@@ -93,3 +96,6 @@ class Vision130Driver:
         except Exception as err:
             print (str(err))
             pass
+
+if __name__ == '__main__':
+    print("I am main!")

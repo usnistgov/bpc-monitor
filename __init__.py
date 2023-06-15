@@ -5,7 +5,7 @@ __maintainer__ 	=       "Alireza Panna"
 __email__ 	=       "alireza.panna@nist.gov"
 __status__ 	=       "Stable"
 __date__        =       "03/25/2023"
-__version__     =       "1.21"
+__version__     =       "1.3"
 
 TODO            =
 CHANGELOG       =       """
@@ -33,4 +33,6 @@ CHANGELOG       =       """
                         053023: Added calculation to est how much lHe remains in the dewar, Added menubar to show information about the program, updated default arguments
                                 to not start the pcas server if the PV variable is not set update version to 1.2
                         060223: General cleanup, fix some bugs, update to 1.21
+                        061423: Various bug-fixes, added readback to estimate days before lHe at threshold defined by user, 
+                                update version to 1.3
                         """

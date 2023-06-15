@@ -46,7 +46,6 @@ from pandas import read_csv, concat, to_datetime
 
 from pcaspy import SimpleServer, Driver
 from pcaspy.tools import ServerThread
-
 # for logging
 import logging
 from logging.handlers import TimedRotatingFileHandler
@@ -81,11 +80,11 @@ file_handler.setFormatter(fmt)
 logger.addHandler(file_handler)
 
 # python globals
-__version__ = '1.21' # Program version string
+__version__ = '1.3' # Program version string
 MAIN_THREAD_POLL = 1000 # in ms
 He_EXP_RATIO = 1./754.2 # liquid to gas expansion ratio for Helium at 1 atm and 70 F
 WIDTH = 450
-HEIGHT= 390
+HEIGHT= 430
 HIST = 24
 WORKERS = 8
 
@@ -173,6 +172,7 @@ class mainThread(QThread, QObject):
     # define the signals that this thread calls
     update_data = pyqtSignal(list)
     plot_temp = pyqtSignal()
+    lHe_est_time_to_threshold = pyqtSignal(str)
 
     def __init__(self):
         """
@@ -182,7 +182,8 @@ class mainThread(QThread, QObject):
         QtCore.QThread.__init__(self)
         QtCore.QObject.__init__(self)
         self.setTerminationEnabled(True)
-        self.lHe_summer = []
+        # self.lHe_summer = []
+        self.integrated_lHe_used = 0.0
 
     def __del__(self):
         """
@@ -210,38 +211,58 @@ class mainThread(QThread, QObject):
         global MAIN_THREAD_POLL
         try:
             #logger.info("In function: " + inspect.stack()[0][3])
+            start_time = perf_counter()
             all_rbv = self._getRbvs()
+            call_time_to_threshold = ''
             rec = all_rbv[10]*60*24/(1./He_EXP_RATIO)
             all_rbv.insert(len(all_rbv), rec)
             if main_window.le_start_ltr.text() != '':
+                # get the starting lHe from user
                 start_lHe = float(main_window.le_start_ltr.text())
                 if start_lHe > 0:
                     if rec != NaN:
                         try:
-                            self.lHe_summer.append((rec/86400.0)*main_window.actual_time_taken)
-                            current_lHe = sum(self.lHe_summer)
-                            remaining_lHe_perc = 100.0 - (current_lHe/start_lHe)*100
-                            all_rbv.insert(len(all_rbv), str(round(remaining_lHe_perc, 4)))
+                            # instantaneous lHe being used in litres/sec
+                            inst_lHe_used = (rec/86400.0)*main_window.actual_time_taken
+                            # self.lHe_summer.append((rec/86400.0)*main_window.actual_time_taken)
+                            # integrated lHe being used in liters
+                            self.integrated_lHe_used = self.integrated_lHe_used + inst_lHe_used
+                            # remaining lHe in dewar in percent
+                            remaining_lHe_perc = 100.0 - (self.integrated_lHe_used/start_lHe)*100.0
+                            # print ("Integrated: ", self.integrated_lHe_used, "Remaining %:", remaining_lHe_perc)
+                            if remaining_lHe_perc <= 0:
+                                all_rbv.insert(len(all_rbv), str(0))
+                                main_window.le_start_ltr.setText(str(0))
+                            else:
+                                all_rbv.insert(len(all_rbv), str(round(remaining_lHe_perc, 4)))
                         except Exception as e:
                             logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
                             pass
                         if main_window.le_lHe_threshold.text() != '':
+                            calc_time_to_threshold = str(round(((start_lHe - self.integrated_lHe_used)/rec), 2))
                             if remaining_lHe_perc <= float(main_window.le_lHe_threshold.text()):
                                 main_window.lbl_lHe_per_remain_rbv.setStyleSheet("color: red; background-color: black;")
                             else:
                                 main_window.lbl_lHe_per_remain_rbv.setStyleSheet("color: rgb(0, 170, 0); background-color: black;")
+                        else:
+                            calc_time_to_threshold = ''
                 else:
                     all_rbv.insert(len(all_rbv), '')
-                    self.lHe_summer = []
+                    calc_time_to_threshold = ''
+                    self.integrated_lHe_used = 0
             else:
                 all_rbv.insert(len(all_rbv), '')
-                self.lHe_summer = []
-
+                calc_time_to_threshold = ''
+                self.integrated_lHe_used = 0
             #print (all_rbv)
             self.update_data.emit(all_rbv)
             self.plot_temp.emit()
+            self.lHe_est_time_to_threshold.emit(calc_time_to_threshold)
+            #print ("Time taken to execute: ", perf_counter() - start_time )
         except Exception as e:
             self.update_data.emit(all_rbv)
+            self.plot_temp.emit()
+            self.lHe_est_time_to_threshold.emit(calc_time_to_threshold)
             logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
             pass
 
@@ -264,8 +285,8 @@ class aboutWindow(QWidget):
         self.te_about.setPlainText("Developer & Maintainer: Alireza Panna")
         self.te_about.append("Co-Maintainer: Frank Seifert")
         self.te_about.append("Email: alireza.panna@nist.gov & frank.seifert@nist.gov")
-        self.te_about.append("EPICS PV for this server: " + str(args.epics_pv))
-        self.te_about.append("Current data folder: " + str(args.save_path))
+        self.te_about.append("EPICS PV for this server: " + str(PV))
+        self.te_about.append("Current data folder: " + str(datadir))
 
         layout = QVBoxLayout()
         layout.addWidget(self.te_about)
@@ -308,6 +329,7 @@ class mainWindow(QTabWidget):
         self.mthread.start()
         self.mthread.update_data.connect(self._getAllData)
         self.mthread.plot_temp.connect(self.plot_data)
+        self.mthread.lHe_est_time_to_threshold.connect(self.set_est_lHe)
 
         self.tray_icon = QSystemTrayIcon(self)
         self.tray_icon.setIcon(self.style().standardIcon(pixmapi))
@@ -346,7 +368,7 @@ class mainWindow(QTabWidget):
 
         self._create_menubar()
 
-        if args.epics_pv != '':
+        if PV != '':
             self.drv = myDriver()
         #logger.info ("In function: " + inspect.stack()[0][3])
         self.start_time = time()
@@ -371,17 +393,17 @@ class mainWindow(QTabWidget):
         sizePolicy.setVerticalStretch(0)
 
         self.lbl_uptime = QLabel(parent=self.tab1)
-        self.lbl_uptime.setGeometry(QRect(30, 297, 41, 20))
+        self.lbl_uptime.setGeometry(QRect(30, 347, 41, 20))
         self.lbl_uptime.setFont(self.font)
         self.lbl_uptime.setObjectName("lbl_uptime")
 
         self.lbl_plt_hist = QLabel(parent=self.tab1)
-        self.lbl_plt_hist.setGeometry(QRect(15, 257, 71, 20))
+        self.lbl_plt_hist.setGeometry(QRect(15, 307, 71, 20))
         self.lbl_plt_hist.setFont(self.font)
         self.lbl_plt_hist.setObjectName("lbl_plt_hist")
 
         self.pw_2 = pg.PlotWidget(parent=self.tab1)
-        self.pw_2.setGeometry(QRect(180, 190, 266, 161))
+        self.pw_2.setGeometry(QRect(180, 220, 266, 179))
         sizePolicy.setHeightForWidth(self.pw_2.sizePolicy().hasHeightForWidth())
         self.pw_2.setSizePolicy(sizePolicy)
         self.pw_2.setMaximumSize(QtCore.QSize(605, 16777215))
@@ -394,19 +416,19 @@ class mainWindow(QTabWidget):
         self.pw_2.setObjectName("pw_2")
 
         self.cb_plt_hist = QComboBox(parent=self.tab1)
-        self.cb_plt_hist.setGeometry(QtCore.QRect(15, 277, 71, 22))
+        self.cb_plt_hist.setGeometry(QtCore.QRect(15, 327, 71, 22))
         self.cb_plt_hist.setFont(self.font)
         self.cb_plt_hist.setObjectName("cb_plt_hist")
 
         self.btn_clr_plots = QPushButton(parent=self.tab1)
-        self.btn_clr_plots.setGeometry(QtCore.QRect(100, 272, 75, 31))
+        self.btn_clr_plots.setGeometry(QtCore.QRect(100, 322, 75, 31))
         self.btn_clr_plots.setFont(self.font)
         self.btn_clr_plots.setStyleSheet("background-color: rgb(0, 170, 0);\n"
                                          "color: rgb(255, 255, 255);")
         self.btn_clr_plots.setObjectName("btn_clr_plots")
 
         self.le_uptime = QLineEdit(parent=self.tab1)
-        self.le_uptime.setGeometry(QtCore.QRect(7, 320, 91, 31))
+        self.le_uptime.setGeometry(QtCore.QRect(7, 370, 91, 31))
         self.le_uptime.setFont(self.font)
         self.le_uptime.setLayoutDirection(QtCore.Qt.LayoutDirection.RightToLeft)
         self.le_uptime.setStyleSheet("background-color: rgb(0, 0, 0);\n"
@@ -432,7 +454,7 @@ class mainWindow(QTabWidget):
         self.label.setObjectName("label")
 
         self.btn_quit = QPushButton(parent=self.tab1)
-        self.btn_quit.setGeometry(QtCore.QRect(100, 320, 75, 31))
+        self.btn_quit.setGeometry(QtCore.QRect(100, 370, 75, 31))
         self.btn_quit.setFont(self.font)
         self.btn_quit.setStyleSheet("background-color: rgb(255, 0, 0);\n"
                                     "color: rgb(255, 255, 255);")
@@ -440,7 +462,7 @@ class mainWindow(QTabWidget):
 
         self.main_frame = QFrame(parent=self.tab1)
         self.main_frame.setEnabled(True)
-        self.main_frame.setGeometry(QtCore.QRect(5, 35, 171, 170))
+        self.main_frame.setGeometry(QtCore.QRect(5, 30, 171, 170))
         sizePolicy.setHeightForWidth(self.main_frame.sizePolicy().hasHeightForWidth())
         self.main_frame.setSizePolicy(sizePolicy)
         self.main_frame.setMinimumSize(QtCore.QSize(150, 170))
@@ -560,7 +582,7 @@ class mainWindow(QTabWidget):
         self.lbl_lHe_per_remain_rbv.setObjectName("lbl_lHe_per_remain_rbv")
 
         self.pw = pg.PlotWidget(parent=self.tab1)
-        self.pw.setGeometry(QtCore.QRect(180, 39, 266, 151))
+        self.pw.setGeometry(QtCore.QRect(180, 38, 266, 179))
         sizePolicy.setHeightForWidth(self.pw.sizePolicy().hasHeightForWidth())
         self.pw.setSizePolicy(sizePolicy)
         self.pw.setMaximumSize(QtCore.QSize(605, 16777215))
@@ -573,7 +595,7 @@ class mainWindow(QTabWidget):
         self.pw.setObjectName("pw")
 
         self.lbl_start_ltr = QLabel(parent=self.tab1)
-        self.lbl_start_ltr.setGeometry(QtCore.QRect(10, 205, 81, 31))
+        self.lbl_start_ltr.setGeometry(QtCore.QRect(10, 200, 81, 31))
         self.lbl_start_ltr.setMinimumSize(QtCore.QSize(0, 31))
         self.lbl_start_ltr.setFont(self.font)
         self.lbl_start_ltr.setStyleSheet("background-color: rgb(255, 255, 255,0);\n"
@@ -582,11 +604,11 @@ class mainWindow(QTabWidget):
 
         self.le_start_ltr = QLineEdit(parent=self.tab1)
         self.le_start_ltr.setValidator(QDoubleValidator())
-        self.le_start_ltr.setGeometry(QtCore.QRect(119, 209, 51, 25))
+        self.le_start_ltr.setGeometry(QtCore.QRect(119, 204, 51, 25))
         self.le_start_ltr.setObjectName("le_start_ltr")
 
         self.lbl_lHe_threshold = QLabel(parent=self.tab1)
-        self.lbl_lHe_threshold.setGeometry(QtCore.QRect(10, 235, 111, 31))
+        self.lbl_lHe_threshold.setGeometry(QtCore.QRect(10, 230, 111, 31))
         self.lbl_lHe_threshold.setMinimumSize(QtCore.QSize(0, 31))
         self.lbl_lHe_threshold.setFont(self.font)
         self.lbl_lHe_threshold.setStyleSheet("background-color: rgb(255, 255, 255,0);\n"
@@ -595,8 +617,29 @@ class mainWindow(QTabWidget):
 
         self.le_lHe_threshold = QLineEdit(parent=self.tab1)
         self.le_lHe_threshold.setValidator(QDoubleValidator())
-        self.le_lHe_threshold.setGeometry(QtCore.QRect(119, 239, 51, 25))
+        self.le_lHe_threshold.setGeometry(QtCore.QRect(119, 234, 51, 25))
         self.le_lHe_threshold.setObjectName("le_lHe_threshold")
+        
+        self.lbl_lHe_threshold_time_est = QLabel(parent=self.tab1)
+        self.lbl_lHe_threshold_time_est.setGeometry(QtCore.QRect(30, 260, 131, 31))
+        self.lbl_lHe_threshold_time_est.setFont(self.font)
+        self.lbl_lHe_threshold_time_est.setStyleSheet("background-color: rgb(255, 255, 255,0);\n"
+                                                      "color: rgb(0, 0, 0);")
+        self.lbl_lHe_threshold_time_est.setObjectName("lbl_lHe_threshold_time_est")
+    
+        self.lbl_lHe_threshold_time_est_rbv = QLabel(parent=self.tab1)
+        self.lbl_lHe_threshold_time_est_rbv.setGeometry(QtCore.QRect(30, 290, 130, 21))
+        sizePolicy.setHeightForWidth(self.lbl_lHe_threshold_time_est_rbv.sizePolicy().hasHeightForWidth())
+        self.lbl_lHe_threshold_time_est_rbv.setSizePolicy(sizePolicy)
+        self.lbl_lHe_threshold_time_est_rbv.setFont(self.font)
+        self.lbl_lHe_threshold_time_est_rbv.setStyleSheet("background-color: rgb(0, 0, 0);\n"
+                                                          "color: rgb(0, 170, 0);")
+        self.lbl_lHe_threshold_time_est_rbv.setFrameShadow(QFrame.Shadow.Sunken)
+        self.lbl_lHe_threshold_time_est_rbv.setTextFormat(QtCore.Qt.TextFormat.AutoText)
+        self.lbl_lHe_threshold_time_est_rbv.setScaledContents(True)
+        self.lbl_lHe_threshold_time_est_rbv.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.lbl_lHe_threshold_time_est_rbv.setIndent(0)
+        self.lbl_lHe_threshold_time_est_rbv.setObjectName("lbl_lHe_threshold_time_est_rbv")
 
         _translate = QtCore.QCoreApplication.translate
         self.lbl_uptime.setText(_translate("TabWidget", "uptime "))
@@ -616,7 +659,9 @@ class mainWindow(QTabWidget):
         self.lbl_lHe_per_remain_rbv.setText(_translate("TabWidget", "123"))
         self.lbl_start_ltr.setText(_translate("TabWidget", "lHe Start [ltr]"))
         self.lbl_lHe_threshold.setText(_translate("TabWidget", "lHe threshold [%]"))
-
+        self.lbl_lHe_threshold_time_est.setText(_translate("TabWidget", "Est. time to threshold"))
+        self.lbl_lHe_threshold_time_est_rbv.setText(_translate("TabWidget", "123"))
+        
     def tab2_ui(self, ):
         layout = QVBoxLayout()
         layout2 = QHBoxLayout()
@@ -688,7 +733,6 @@ class mainWindow(QTabWidget):
 
     #@functools.lru_cache(maxsize=128)
     def get_my_data(self,):
-        global datadir
         mydata = []
         data   = []
         get_data_start = perf_counter()
@@ -814,22 +858,31 @@ class mainWindow(QTabWidget):
         self.quit()
 
     def _getAllData(self, all_rbv):
-         # print(all_rbv)
-         self.timestamp = datetime.now()
-         self.lbl_pressure_rbv.setText(str(round(all_rbv[20], 3)))
-         self.lbl_flow_rbv.setText(str(round(all_rbv[10], 3)))
-         self.lbl_valve_rbv.setText(str(round(all_rbv[-3], 3)))
-         # rec = all_rbv[10]*60*24/(1./He_EXP_RATIO)
-         self.lbl_rec_rbv.setText(str(round(all_rbv[-2], 3)))
-         self.lbl_lHe_per_remain_rbv.setText(str(all_rbv[-1]))
-         # write to epics pv records
-         if args.epics_pv != '':
-             self.drv.write('PRESSURE', all_rbv[20])
-             self.drv.write('LHE_FLOW', all_rbv[-2])
-             self.drv.write('VALVE', all_rbv[-2] )
-             self.drv.write('GAS_FLOW', all_rbv[10])
-             self.drv.updatePVs()
-
+         # print("% remain:", all_rbv[-1])
+         try:
+             self.timestamp = datetime.now()
+             self.lbl_pressure_rbv.setText(str(round(all_rbv[20], 3)))
+             self.lbl_flow_rbv.setText(str(round(all_rbv[10], 3)))
+             self.lbl_valve_rbv.setText(str(round(all_rbv[-3], 3)))
+             # rec = all_rbv[10]*60*24/(1./He_EXP_RATIO)
+             self.lbl_rec_rbv.setText(str(round(all_rbv[-2], 3)))
+             self.lbl_lHe_per_remain_rbv.setText(str(all_rbv[-1]))
+             # write to epics pv records
+             if PV != '':
+                 self.drv.write('PRESSURE', all_rbv[20])
+                 self.drv.write('LHE_RECOVERED', all_rbv[-2])
+                 self.drv.write('VALVE', all_rbv[-2] )
+                 self.drv.write('HE_FLOW', all_rbv[10])
+                 self.drv.updatePVs()
+             app.processEvents()
+         except Exception as e:
+             logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
+             pass
+        
+    def set_est_lHe(self, calc_time_to_threshold):
+        self.lbl_lHe_threshold_time_est_rbv.setText(calc_time_to_threshold + ' days')
+        app.processEvents()
+        
     def check_worker_thread(self):
         """
         A QTimer is used to run the main thread every 1 s.
@@ -1031,7 +1084,7 @@ class mainWindow(QTabWidget):
             if reply == QMessageBox.StandardButton.Yes:
                 self.quit_flag = 1
                 mybpc.close_comm()
-                if args.epics_pv != '':
+                if PV != '':
                     server_thread.stop()
                 self.mthread.stop()
                 self.close()
@@ -1041,7 +1094,7 @@ class mainWindow(QTabWidget):
                 pass
         if self.quit_flag == 1:
             mybpc.close_comm()
-            if args.epics_pv != '':
+            if PV != '':
                 server_thread.stop()
             self.mthread.stop()
             self.close()
@@ -1053,15 +1106,14 @@ def _sigint_handler(*args):
     Handler for the SIGINT signal. For testing purposes only
     """
     sys.stderr.write('\r')
-    if args.epics_pv != '':
+    if PV != '':
         server_thread.stop()
     QtGui.QApplication.quit()
 
 def dir_path(save_path):
-    if path.isdir(save_path):
-        return save_path
-    else:
-        raise ArgumentTypeError(f"readable_dir:{save_path} is not a valid path")
+    if  not path.isdir(save_path):
+        mkdir(save_path)
+    return save_path
 
 if __name__ == '__main__':
     # user options to run multiple instances with different configurations for example
@@ -1077,8 +1129,6 @@ if __name__ == '__main__':
     port = args.port
     PV = args.epics_pv
     datadir = args.save_path
-    if path.isdir(datadir) == False:
-        mkdir(datadir)
     # logger.info("In function: " +  inspect.stack()[0][3] + "EPICS PV for this server: " + str(PV))
     # Handle high resolution displays:
     if hasattr(QtCore.Qt, 'AA_EnableHighDpiScaling'):
@@ -1090,7 +1140,7 @@ if __name__ == '__main__':
     # create pcas server
     if not PV.endswith(':'):
         prefix = PV + ':'
-    if args.epics_pv != '':
+    if PV != '':
         server = SimpleServer()
         server.createPV(prefix, pvdb)
     mybpc = Vision130.Vision130Driver(myserver, port)
@@ -1105,7 +1155,7 @@ if __name__ == '__main__':
     # handle ctrl+c event
     signal.signal(signal.SIGINT, _sigint_handler)
     # create pcas server thread and shut down when app exits
-    if args.epics_pv != '':
+    if PV != '':
         server_thread = ServerThread(server)
         # start pcas event loop
         server_thread.start()
