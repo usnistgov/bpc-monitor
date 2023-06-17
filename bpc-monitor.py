@@ -2,7 +2,7 @@
 # Note: For the CCC dewars: 1 inch of lHe is 1 Ltr of lHe
 import sys
 from os import environ, chdir, sep, path, mkdir, getcwd, scandir
-from argparse import ArgumentParser, ArgumentTypeError
+from argparse import ArgumentParser
 
 try:
     environ["QT_API"] = "pyqt6"
@@ -80,7 +80,7 @@ file_handler.setFormatter(fmt)
 logger.addHandler(file_handler)
 
 # python globals
-__version__ = '1.4' # Program version string
+__version__ = '1.5' # Program version string
 MAIN_THREAD_POLL = 1000 # in ms
 He_EXP_RATIO = 1./754.2 # liquid to gas expansion ratio for Helium at 1 atm and 70 F
 WIDTH = 450
@@ -142,6 +142,10 @@ pvdb = {
                      'unit'  : '%'},
         'HE_FLOW': {'prec'  : 6,
                      'unit'  : 'l/min'},
+        'LHE_LEFT': {'prec'  : 3,
+                     'unit'  : 'l'},
+        'LHE_FIN': {'prec'  : 2,
+                     'unit'  : 'day'},
         }
 
 class myDriver(Driver):
@@ -182,10 +186,12 @@ class mainThread(QThread, QObject):
         QtCore.QThread.__init__(self)
         QtCore.QObject.__init__(self)
         self.setTerminationEnabled(True)
-        # self.lHe_summer = []
         self.integrated_lHe_used = 0.0
+        self.remaining_lHe = ''
+        self.calc_time_to_threshold = ''
         self._kill = False
         self.loop_time = 0
+        self.rec = []
 
     def __del__(self):
         """
@@ -216,60 +222,73 @@ class mainThread(QThread, QObject):
                 #logger.info("In function: " + inspect.stack()[0][3])
                 start_time = perf_counter()
                 all_rbv = self._getRbvs()
-                calc_time_to_threshold = ''
-                rec = all_rbv[10]*60*24/(1./He_EXP_RATIO)
+                if all_rbv[10] != NaN:
+                    rec = all_rbv[10]*60*24/(1./He_EXP_RATIO)
+                    self.rec.append(rec)
+                else:
+                    rec = NaN
                 all_rbv.insert(len(all_rbv), rec)
+                # if user enters lHe start ltrs...
                 if main_window.le_start_ltr.text() != '':
                     # get the starting lHe from user
                     start_lHe = float(main_window.le_start_ltr.text())
                     if start_lHe > 0:
-                        if rec != NaN:
+                        if rec != NaN:  
                             try:
                                 # instantaneous lHe being used in litres/sec
                                 inst_lHe_used = (rec/86400.0)*self.loop_time
-                                # self.lHe_summer.append((rec/86400.0)*main_window.actual_time_taken)
                                 # integrated lHe being used in liters
-                                self.integrated_lHe_used = self.integrated_lHe_used + inst_lHe_used
+                                if inst_lHe_used != NaN:
+                                    self.integrated_lHe_used = self.integrated_lHe_used + inst_lHe_used
                                 # remaining lHe in dewar in percent
-                                remaining_lHe_perc = 100.0 - (self.integrated_lHe_used/start_lHe)*100.0
+                                # remaining_lHe_perc = 100.0 - (self.integrated_lHe_used/start_lHe)*100.0
+                                # remaining_lHe used in litres
+                                self.remaining_lHe = str(round((start_lHe - self.integrated_lHe_used), 4))
                                 # print ("Integrated: ", self.integrated_lHe_used, "Remaining %:", remaining_lHe_perc)
-                                if remaining_lHe_perc <= 0:
+                                if float(self.remaining_lHe) <= 0:
                                     all_rbv.insert(len(all_rbv), str(0))
                                     main_window.le_start_ltr.setText(str(0))
                                 else:
-                                    all_rbv.insert(len(all_rbv), str(round(remaining_lHe_perc, 4)))
+                                    all_rbv.insert(len(all_rbv), self.remaining_lHe)
                             except Exception as e:
                                 logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
                                 pass
                             if main_window.le_lHe_threshold.text() != '':
-                                start_lHe_threshold_corr = start_lHe - float(main_window.le_lHe_threshold.text())*0.01*start_lHe
-                                calc_time_to_threshold = str(round(((start_lHe_threshold_corr - self.integrated_lHe_used)/rec), 2))
-                                if remaining_lHe_perc <= float(main_window.le_lHe_threshold.text()):
+                                start_lHe_threshold_corr = start_lHe - float(main_window.le_lHe_threshold.text())
+                                self.calc_time_to_threshold = str(round(((start_lHe_threshold_corr - self.integrated_lHe_used)/mean(self.rec)), 2))
+                                if float(self.remaining_lHe) <= float(main_window.le_lHe_threshold.text()):
                                     main_window.lbl_lHe_per_remain_rbv.setStyleSheet("color: red; background-color: black;")
                                 else:
                                     main_window.lbl_lHe_per_remain_rbv.setStyleSheet("color: rgb(0, 170, 0); background-color: black;")
                             else:
-                                calc_time_to_threshold = ''
+                                self.calc_time_to_threshold = ''
+                        else:
+                            # if rec is NaN
+                            all_rbv.insert(len(all_rbv), self.remaining_lHe)
                     else:
+                        # start lHe <=0
                         all_rbv.insert(len(all_rbv), '')
-                        calc_time_to_threshold = ''
+                        self.calc_time_to_threshold = ''
                         self.integrated_lHe_used = 0
                 else:
+                    # if start ltr text == ''
                     all_rbv.insert(len(all_rbv), '')
-                    calc_time_to_threshold = ''
+                    self.calc_time_to_threshold = ''
                     self.integrated_lHe_used = 0
                 self.update_data.emit(all_rbv)
                 self.plot_temp.emit()
-                self.lHe_est_time_to_threshold.emit(calc_time_to_threshold)
+                self.lHe_est_time_to_threshold.emit(self.calc_time_to_threshold)
                 #print ("Time taken to execute: ", perf_counter() - start_time )
+                if len(self.rec) > 60:
+                    self.rec.pop(0)
             except Exception as e:
                 self.update_data.emit(all_rbv)
                 self.plot_temp.emit()
-                self.lHe_est_time_to_threshold.emit(calc_time_to_threshold)
+                self.lHe_est_time_to_threshold.emit(self.calc_time_to_threshold)
                 logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
                 pass
             # makes sure that the GUI thread gets processed
-            # app.processEvents()
+            app.processEvents()
             sleep(MAIN_THREAD_POLL*0.001)
             self.loop_time = perf_counter() - start_time
 
@@ -293,6 +312,7 @@ class aboutWindow(QWidget):
         self.te_about.append("Co-Maintainer: Frank Seifert")
         self.te_about.append("Email: alireza.panna@nist.gov & frank.seifert@nist.gov")
         self.te_about.append("EPICS PV for this server: " + str(PV))
+        self.te_about.append("EPICS records: " + str(list(pvdb.keys())))
         self.te_about.append("Current data folder: " + str(datadir))
 
         layout = QVBoxLayout()
@@ -662,10 +682,10 @@ class mainWindow(QTabWidget):
         self.lbl_valve.setText(_translate("TabWidget", "Valve [%]"))
         self.lbl_rec_rbv.setText(_translate("TabWidget", "123"))
         self.lbl_rec.setText(_translate("TabWidget", "lHe Rec [l/d]"))
-        self.lbl_lHe_per_remain.setText(_translate("TabWidget", "lHe left [%]"))
+        self.lbl_lHe_per_remain.setText(_translate("TabWidget", "lHe left [ltr]"))
         self.lbl_lHe_per_remain_rbv.setText(_translate("TabWidget", "123"))
         self.lbl_start_ltr.setText(_translate("TabWidget", "lHe Start [ltr]"))
-        self.lbl_lHe_threshold.setText(_translate("TabWidget", "lHe threshold [%]"))
+        self.lbl_lHe_threshold.setText(_translate("TabWidget", "lHe threshold [ltr]"))
         self.lbl_lHe_threshold_time_est.setText(_translate("TabWidget", "Est. time to threshold"))
         self.lbl_lHe_threshold_time_est_rbv.setText(_translate("TabWidget", "123"))
 
@@ -880,6 +900,7 @@ class mainWindow(QTabWidget):
                  self.drv.write('LHE_RECOVERED', all_rbv[-2])
                  self.drv.write('VALVE', all_rbv[-2] )
                  self.drv.write('HE_FLOW', all_rbv[10])
+                 self.drv.write('LHE_LEFT', all_rbv[-1])
                  self.drv.updatePVs()
          except Exception as e:
              logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
@@ -887,6 +908,9 @@ class mainWindow(QTabWidget):
 
     def set_est_lHe(self, calc_time_to_threshold):
         self.lbl_lHe_threshold_time_est_rbv.setText(calc_time_to_threshold + ' days')
+        if PV != '':
+            self.drv.write('LHE_FIN', calc_time_to_threshold)
+            self.drv.updatePVs()
 
     def calc_uptime(self):
         """

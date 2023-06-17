@@ -5,7 +5,7 @@ __maintainer__ 	=       "Alireza Panna"
 __email__ 	    =       "alireza.panna@nist.gov"
 __status__ 	    =       "Stable"
 __date__        =       "03/25/2023"
-__version__     =       "1.4"
+__version__     =       "1.5"
 
 TODO            =
 CHANGELOG       =       """
@@ -37,4 +37,5 @@ CHANGELOG       =       """
                                 update version to 1.3
                         061523: Handle thread termination more gracefully, no longer using QTimer to run the thread to fix GUI freeze issue
                                 Update version to 1.4
+                        061723: Bug fixes, changed from % to liters to display remaining lHe and setting lHe threshold, added new epics pv's
                         """
