@@ -8,7 +8,7 @@ try:
     environ["QT_API"] = "pyqt6"
     from PyQt6 import QtCore, QtGui
     from PyQt6.QtCore import pyqtSignal, QTimer, QThread, QSettings, QObject, QRect
-    from PyQt6.QtGui import QAction, QFont, QDoubleValidator
+    from PyQt6.QtGui import QAction, QFont, QDoubleValidator, QIcon
     from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,\
                                 QLabel, QPushButton, QComboBox,QMessageBox, \
                                 QSystemTrayIcon, QStyle, QTabWidget, \
@@ -17,7 +17,7 @@ try:
 except ImportError:
     environ["QT_API"] = "pyqt5"
     from PyQt5 import QtCore, QtGui
-    from PyQt5.QtGui import QFont, QDoubleValidator
+    from PyQt5.QtGui import QFont, QDoubleValidator, QIcon
     from PyQt5.QtCore import pyqtSignal, QTimer, QThread, QSettings, QObject, QRect
     from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,\
                                 QLabel, QPushButton, QComboBox, QMessageBox, \
@@ -50,6 +50,9 @@ from pcaspy.tools import ServerThread
 import logging
 from logging.handlers import TimedRotatingFileHandler
 
+from smtplib import SMTP
+from email.mime.text import MIMEText
+
 # base directory of the project
 if getattr(sys, 'frozen', False):
     # PyInstaller creates a temp folder and stores path in _MEIPASS
@@ -80,13 +83,16 @@ file_handler.setFormatter(fmt)
 logger.addHandler(file_handler)
 
 # python globals
-__version__ = '1.5' # Program version string
-MAIN_THREAD_POLL = 1000 # in ms
+__version__ = '1.6' # Program version string
+MAIN_THREAD_POLL = 1000 # in ms (1 s)
+EMAIL_POLL = 1.44e7 # in ms (4 hours)
 He_EXP_RATIO = 1./754.2 # liquid to gas expansion ratio for Helium at 1 atm and 70 F
 WIDTH = 450
 HEIGHT= 430
 HIST = 24
 WORKERS = 8
+START_LHE = ''
+THRESHOLD_LHE = ''
 
 chdir(base_dir)
 # load the main ui file
@@ -134,18 +140,26 @@ style = """QTabWidget::tab-bar{
            }"""
 
 pvdb = {
-        'PRESSURE': {'prec'  : 3,
-                     'unit'  : 'mbar'},
-        'LHE_RECOVERED': {'prec'  : 6,
-                     'unit'  : 'l/day'},
-        'VALVE': {'prec'  : 0,
-                     'unit'  : '%'},
-        'HE_FLOW': {'prec'  : 6,
-                     'unit'  : 'l/min'},
-        'LHE_LEFT': {'prec'  : 3,
-                     'unit'  : 'l'},
-        'LHE_FIN': {'prec'  : 2,
-                     'unit'  : 'day'},
+        'PRESSURE':         {'prec'  : 3,
+                             'unit'  : 'mbar',
+                             'scan'  : 1},
+        'LHE_RECOVERED':    {'prec'  : 6,
+                             'unit'  : 'l/day',
+                             'scan'  : 1},
+        'VALVE':            {'prec'  : 0,
+                             'unit'  : '%',
+                             'scan'  : 1},
+        'HE_FLOW':          {'prec'  : 6,
+                             'unit'  : 'l/min',
+                             'scan'  : 1},
+        'LHE_LEFT':         {'type'  : 'string',
+                             'prec'  : 3,
+                             'unit'  : 'l',
+                             'scan'  : 1},
+        'LHE_FIN':          {'type'  : 'string',
+                             'prec'  : 2,
+                             'unit'  : 'day',
+                             'scan'  : 1},
         }
 
 class myDriver(Driver):
@@ -177,6 +191,8 @@ class mainThread(QThread, QObject):
     update_data = pyqtSignal(list)
     plot_temp = pyqtSignal()
     lHe_est_time_to_threshold = pyqtSignal(str)
+    remaining_lHe_signal = pyqtSignal(str)
+    rec_signal = pyqtSignal(float)
 
     def __init__(self):
         """
@@ -217,26 +233,28 @@ class mainThread(QThread, QObject):
           MAIN_THREAD_POLL
         """
         global MAIN_THREAD_POLL
+        global START_LHE
+        global THRESHOLD_LHE
         while 1 and not self._kill:
             try:
                 #logger.info("In function: " + inspect.stack()[0][3])
                 start_time = perf_counter()
                 all_rbv = self._getRbvs()
                 if all_rbv[10] != NaN:
-                    rec = all_rbv[10]*60*24/(1./He_EXP_RATIO)
-                    self.rec.append(rec)
+                    recovered = all_rbv[10]*60*24/(1./He_EXP_RATIO)
+                    self.rec.append(recovered)
                 else:
-                    rec = NaN
-                all_rbv.insert(len(all_rbv), rec)
+                    recovered = NaN
+                # all_rbv.insert(len(all_rbv), recovered)
                 # if user enters lHe start ltrs...
-                if main_window.le_start_ltr.text() != '':
+                if START_LHE != '' and START_LHE != '-':
                     # get the starting lHe from user
-                    start_lHe = float(main_window.le_start_ltr.text())
+                    start_lHe = float(START_LHE)
                     if start_lHe > 0:
-                        if rec != NaN:  
+                        if recovered != NaN:  
                             try:
                                 # instantaneous lHe being used in litres/sec
-                                inst_lHe_used = (rec/86400.0)*self.loop_time
+                                inst_lHe_used = (recovered/86400.0)*self.loop_time
                                 # integrated lHe being used in liters
                                 if inst_lHe_used != NaN:
                                     self.integrated_lHe_used = self.integrated_lHe_used + inst_lHe_used
@@ -246,50 +264,50 @@ class mainThread(QThread, QObject):
                                 self.remaining_lHe = str(round((start_lHe - self.integrated_lHe_used), 4))
                                 # print ("Integrated: ", self.integrated_lHe_used, "Remaining %:", remaining_lHe_perc)
                                 if float(self.remaining_lHe) <= 0:
-                                    all_rbv.insert(len(all_rbv), str(0))
-                                    main_window.le_start_ltr.setText(str(0))
-                                else:
-                                    all_rbv.insert(len(all_rbv), self.remaining_lHe)
+                                    self.remaining_lHe = str(0)
                             except Exception as e:
                                 logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
                                 pass
-                            if main_window.le_lHe_threshold.text() != '':
-                                start_lHe_threshold_corr = start_lHe - float(main_window.le_lHe_threshold.text())
+                            if THRESHOLD_LHE != '' and float(THRESHOLD_LHE) < start_lHe:
+                                start_lHe_threshold_corr = start_lHe - float(THRESHOLD_LHE)
                                 self.calc_time_to_threshold = str(round(((start_lHe_threshold_corr - self.integrated_lHe_used)/mean(self.rec)), 2))
-                                if float(self.remaining_lHe) <= float(main_window.le_lHe_threshold.text()):
-                                    main_window.lbl_lHe_per_remain_rbv.setStyleSheet("color: red; background-color: black;")
-                                else:
-                                    main_window.lbl_lHe_per_remain_rbv.setStyleSheet("color: rgb(0, 170, 0); background-color: black;")
+                                    
+                                #     main_window.lbl_lHe_per_remain_rbv.setStyleSheet("color: red; background-color: black;")
+                                # else:
+                                #     main_window.lbl_lHe_per_remain_rbv.setStyleSheet("color: rgb(0, 170, 0); background-color: black;")
                             else:
                                 self.calc_time_to_threshold = ''
-                        else:
-                            # if rec is NaN
-                            all_rbv.insert(len(all_rbv), self.remaining_lHe)
                     else:
                         # start lHe <=0
-                        all_rbv.insert(len(all_rbv), '')
+                        self.remaining_lHe = str(0)
                         self.calc_time_to_threshold = ''
                         self.integrated_lHe_used = 0
                 else:
                     # if start ltr text == ''
-                    all_rbv.insert(len(all_rbv), '')
+                    self.remaining_lHe = str(0)
                     self.calc_time_to_threshold = ''
                     self.integrated_lHe_used = 0
+
                 self.update_data.emit(all_rbv)
-                self.plot_temp.emit()
                 self.lHe_est_time_to_threshold.emit(self.calc_time_to_threshold)
+                self.rec_signal.emit(recovered)
+                self.remaining_lHe_signal.emit(self.remaining_lHe)
+                self.plot_temp.emit()
                 #print ("Time taken to execute: ", perf_counter() - start_time )
                 if len(self.rec) > 60:
                     self.rec.pop(0)
             except Exception as e:
                 self.update_data.emit(all_rbv)
-                self.plot_temp.emit()
                 self.lHe_est_time_to_threshold.emit(self.calc_time_to_threshold)
+                self.rec_signal.emit(recovered)
+                self.remaining_lHe_signal.emit(str(0))
+                # emit this signal last
+                self.plot_temp.emit()
                 logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
                 pass
-            # makes sure that the GUI thread gets processed
-            app.processEvents()
             sleep(MAIN_THREAD_POLL*0.001)
+            # # makes sure that the GUI thread gets processed
+            # app.processEvents()
             self.loop_time = perf_counter() - start_time
 
     def stop(self):
@@ -325,6 +343,7 @@ class mainWindow(QTabWidget):
         global HIST
         global MAIN_THREAD_POLL
         QTabWidget.__init__(self)
+        # self.setWindowIcon(QIcon(".\\icons\\main.ico"))
         self.tab1 = QWidget()
         self.addTab(self.tab1, "Viewer")
         self.tab2 = QWidget()
@@ -343,10 +362,16 @@ class mainWindow(QTabWidget):
         # program flags
         self.quit_flag = 0
         self.draw_bpc_flag = 0
+        self.start_lHe_flag = 0
         self.timestamp = datetime.now()
         self.settings = QSettings("global_settings.ini", QSettings.Format.IniFormat)
         # self.setupUi(self)
         self.timer = QTimer()
+        # self.timer.setTimerType(QtCore.Qt.PreciseTimer)
+        self.timer.timeout.connect(self.calc_uptime)
+        self.email_timer = QTimer()
+        self.email_timer.timeout.connect(self.send_email)
+        
         self.plot_settings()
         self.fname = datadir + '\\bpc_log_' + strftime("%Y%m%d") + '.txt'
         self.data_pressure = deque(maxlen=int(86400/(HIST*MAIN_THREAD_POLL*1e-3))) #
@@ -357,6 +382,8 @@ class mainWindow(QTabWidget):
         self.mthread.update_data.connect(self._getAllData)
         self.mthread.plot_temp.connect(self.plot_data)
         self.mthread.lHe_est_time_to_threshold.connect(self.set_est_lHe)
+        self.mthread.rec_signal.connect(self.set_recovered)
+        self.mthread.remaining_lHe_signal.connect(self.set_remaining_lHe)
 
         self.tray_icon = QSystemTrayIcon(self)
         self.tray_icon.setIcon(self.style().standardIcon(pixmapi))
@@ -632,6 +659,7 @@ class mainWindow(QTabWidget):
         self.le_start_ltr = QLineEdit(parent=self.tab1)
         self.le_start_ltr.setValidator(QDoubleValidator())
         self.le_start_ltr.setGeometry(QtCore.QRect(119, 204, 51, 25))
+        self.le_start_ltr.returnPressed.connect(self.lHe_start_updated)
         self.le_start_ltr.setObjectName("le_start_ltr")
 
         self.lbl_lHe_threshold = QLabel(parent=self.tab1)
@@ -645,6 +673,7 @@ class mainWindow(QTabWidget):
         self.le_lHe_threshold = QLineEdit(parent=self.tab1)
         self.le_lHe_threshold.setValidator(QDoubleValidator())
         self.le_lHe_threshold.setGeometry(QtCore.QRect(119, 234, 51, 25))
+        self.le_lHe_threshold.returnPressed.connect(self.lHe_threshold_updated)
         self.le_lHe_threshold.setObjectName("le_lHe_threshold")
 
         self.lbl_lHe_threshold_time_est = QLabel(parent=self.tab1)
@@ -674,20 +703,20 @@ class mainWindow(QTabWidget):
         self.btn_clr_plots.setText(_translate("TabWidget", "CLR PLOTS"))
         self.label.setText(_translate("TabWidget", "BACK PRESSURE CONTROLLER VIEWER"))
         self.btn_quit.setText(_translate("TabWidget", "QUIT"))
-        self.lbl_flow_rbv.setText(_translate("TabWidget", "123"))
-        self.lbl_pressure_rbv.setText(_translate("TabWidget", "123"))
+        self.lbl_flow_rbv.setText(_translate("TabWidget", ""))
+        self.lbl_pressure_rbv.setText(_translate("TabWidget", ""))
         self.lbl_pressure.setText(_translate("TabWidget", "P [mbar]"))
         self.lbl_flow.setText(_translate("TabWidget", "He Flow [l/m]"))
-        self.lbl_valve_rbv.setText(_translate("TabWidget", "123"))
+        self.lbl_valve_rbv.setText(_translate("TabWidget", ""))
         self.lbl_valve.setText(_translate("TabWidget", "Valve [%]"))
-        self.lbl_rec_rbv.setText(_translate("TabWidget", "123"))
+        self.lbl_rec_rbv.setText(_translate("TabWidget", ""))
         self.lbl_rec.setText(_translate("TabWidget", "lHe Rec [l/d]"))
         self.lbl_lHe_per_remain.setText(_translate("TabWidget", "lHe left [ltr]"))
-        self.lbl_lHe_per_remain_rbv.setText(_translate("TabWidget", "123"))
+        self.lbl_lHe_per_remain_rbv.setText(_translate("TabWidget", ""))
         self.lbl_start_ltr.setText(_translate("TabWidget", "lHe Start [ltr]"))
         self.lbl_lHe_threshold.setText(_translate("TabWidget", "lHe threshold [ltr]"))
         self.lbl_lHe_threshold_time_est.setText(_translate("TabWidget", "Est. time to threshold"))
-        self.lbl_lHe_threshold_time_est_rbv.setText(_translate("TabWidget", "123"))
+        self.lbl_lHe_threshold_time_est_rbv.setText(_translate("TabWidget", ""))
 
     def tab2_ui(self, ):
         layout = QVBoxLayout()
@@ -870,8 +899,7 @@ class mainWindow(QTabWidget):
         #logger.info("In function: " + inspect.stack()[0][3])
         QMainWindow.show(self)
         self.sc.fig.tight_layout()
-        # self.timer.setTimerType(QtCore.Qt.PreciseTimer)
-        self.timer.timeout.connect(self.calc_uptime)
+
         # run the main thread every 1s
         self.timer.start(MAIN_THREAD_POLL)
         self.timer_start = perf_counter()
@@ -890,27 +918,85 @@ class mainWindow(QTabWidget):
              self.timestamp = datetime.now()
              self.lbl_pressure_rbv.setText(str(round(all_rbv[20], 3)))
              self.lbl_flow_rbv.setText(str(round(all_rbv[10], 3)))
-             self.lbl_valve_rbv.setText(str(round(all_rbv[-3], 3)))
+             self.lbl_valve_rbv.setText(str(round(all_rbv[-1], 3)))
              # rec = all_rbv[10]*60*24/(1./He_EXP_RATIO)
-             self.lbl_rec_rbv.setText(str(round(all_rbv[-2], 3)))
-             self.lbl_lHe_per_remain_rbv.setText(str(all_rbv[-1]))
              # write to epics pv records
              if PV != '':
                  self.drv.write('PRESSURE', all_rbv[20])
-                 self.drv.write('LHE_RECOVERED', all_rbv[-2])
-                 self.drv.write('VALVE', all_rbv[-2] )
+                 self.drv.write('VALVE', all_rbv[-1] )
                  self.drv.write('HE_FLOW', all_rbv[10])
-                 self.drv.write('LHE_LEFT', all_rbv[-1])
                  self.drv.updatePVs()
          except Exception as e:
              logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
              pass
+        
+    def lHe_start_updated(self,):
+        global START_LHE
+        START_LHE = self.le_start_ltr.text()
+        # reset the flag for email and stop the timer if the lHe start is updated
+        self.email_timer.stop()
+        self.start_lHe_flag = 0
+
+    def lHe_threshold_updated(self,):
+        global THRESHOLD_LHE
+        THRESHOLD_LHE = self.le_lHe_threshold.text()
 
     def set_est_lHe(self, calc_time_to_threshold):
         self.lbl_lHe_threshold_time_est_rbv.setText(calc_time_to_threshold + ' days')
         if PV != '':
-            self.drv.write('LHE_FIN', calc_time_to_threshold)
+            self.drv.write('LHE_FIN', str(calc_time_to_threshold))
             self.drv.updatePVs()
+
+    def set_recovered(self, recovered):
+        self.lbl_rec_rbv.setText(str(round(recovered, 3)))
+        if PV != '':
+            self.drv.write('LHE_RECOVERED', recovered)
+            self.drv.updatePVs()
+
+    def set_remaining_lHe(self, remaining_lHe):
+        global EMAIL_POLL
+        self.lbl_lHe_per_remain_rbv.setText(str(remaining_lHe))
+        if THRESHOLD_LHE != '':
+            if float(remaining_lHe) <= float(THRESHOLD_LHE):
+                
+                if receiver != '':
+                    if not self.email_timer.isActive():
+                        self.send_email()
+                        # self.email_timer.start(3600000) # test
+                        self.email_timer.start(EMAIL_POLL)
+        if PV != '':
+            self.drv.write('LHE_LEFT', remaining_lHe)
+            self.drv.updatePVs()
+            
+    def send_email(self,):
+        # print("sending email...")
+        resource = "smtp.nist.gov"
+        port = 25
+        sender = "alireza.panna@nist.gov"
+        # print (receiver)
+        subject = "LHe at threshold"
+        body = """ <html>
+                   <head></head>
+                   <body>
+                   <p>Hello user,<br>
+                      The LHe level in your dewar is below the set threshold level.<br>
+                      Please re-fill or exchange dewar.<br><br>
+                      Thank you<br><br>
+                      Best,<br>
+                      Your friendly service galley lHe monitor
+                   </p>
+                   </body>
+                   </html> """
+        msg = MIMEText(body, "html")
+        msg["From"] = sender
+        msg["Subject"] = subject
+        msg["To"] = receiver
+        smtp_server = SMTP(resource, port)
+
+        try:
+            smtp_server.sendmail(sender, receiver, msg.as_string())
+        finally:
+            smtp_server.quit()
 
     def calc_uptime(self):
         """
@@ -1083,7 +1169,7 @@ class mainWindow(QTabWidget):
                 "BPC Monitor",
                 "Application was minimized to tray",
                 QSystemTrayIcon.MessageIcon.Information,
-                msecs=500
+                msecs=100
             )
             event.ignore()
         if self.quit_flag == 1:
@@ -1091,7 +1177,7 @@ class mainWindow(QTabWidget):
                 "BPC Monitor",
                 "Terminating the application",
                 QSystemTrayIcon.MessageIcon.Information,
-                msecs=500
+                msecs=100
             )
             self.tray_icon.hide()
             del self.tray_icon
@@ -1153,12 +1239,15 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--port',  help='specify the port', default='20256', type=int)
     parser.add_argument('-e', '--epics_pv',  help='Specify the PV epics prefix', default='')
     parser.add_argument( '-s', '--save_path', help='Specify data directory', default="C:" + sep + "_datacache_", type=dir_path)
+    parser.add_argument('-m', '--mail', help='Specify receipients email address', default='')
+    
     # parser.add_argument( '-l', '--log-path', help='Specify log directory', default=logdir)
     args = parser.parse_args(sys.argv[1:])
     myserver = args.host
     port = args.port
     PV = args.epics_pv
     datadir = args.save_path
+    receiver = args.mail
     # logger.info("In function: " +  inspect.stack()[0][3] + "EPICS PV for this server: " + str(PV))
     # Handle high resolution displays:
     if hasattr(QtCore.Qt, 'AA_EnableHighDpiScaling'):
