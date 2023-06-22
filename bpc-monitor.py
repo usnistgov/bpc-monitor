@@ -53,6 +53,8 @@ from logging.handlers import TimedRotatingFileHandler
 from smtplib import SMTP
 from email.mime.text import MIMEText
 
+from random import uniform, random
+
 # base directory of the project
 if getattr(sys, 'frozen', False):
     # PyInstaller creates a temp folder and stores path in _MEIPASS
@@ -66,24 +68,17 @@ else:
     except NameError:
         base_dir = getcwd()
         running_mode = 'Interactive'
-
 # directory to store program logs
-logdir    = "C:" + sep + "_logcache_"
-if path.isdir(logdir) == False:
-    mkdir(logdir)
+# logdir    = "C:" + sep + "_logcache_"
+# if path.isdir(logdir) == False:
+#     mkdir(logdir)
 # Create the logger
 logger = logging.getLogger(__name__)
 # set the log level
 logger.setLevel(logging.INFO)
-# define the file handler and formatting
-lfname = logdir + sep + 'bpc-monitor' + '.log'
-file_handler = TimedRotatingFileHandler(lfname, when='midnight')
-fmt = logging.Formatter('%(asctime)s : %(levelname)s : %(name)s : %(message)s')
-file_handler.setFormatter(fmt)
-logger.addHandler(file_handler)
 
 # python globals
-__version__ = '1.6' # Program version string
+__version__ = '1.7' # Program version string
 MAIN_THREAD_POLL = 1000 # in ms (1 s)
 EMAIL_POLL = 1.44e7 # in ms (4 hours)
 He_EXP_RATIO = 1./754.2 # liquid to gas expansion ratio for Helium at 1 atm and 70 F
@@ -218,12 +213,19 @@ class mainThread(QThread, QObject):
 
     def _getRbvs(self,):
         #logger.info("In function: " + inspect.stack()[0][3])
-        try:
-            bpc_rbv =  mybpc.get_all_float() # get all float data from the controller
-            return bpc_rbv
-        except Exception as e:
-            logger.info("In function: " + inspect.stack()[0][3] + ' ' + str(e))
-            return [NaN]*24
+        if debug_mode:
+            debug_bpc_rbv = [random() for i in range(24)]
+            debug_bpc_rbv[20] = uniform(24.5, 25.5)
+            debug_bpc_rbv[-1] = uniform(0,100)
+            debug_bpc_rbv[10] = uniform (0, 5)
+            return debug_bpc_rbv
+        else:  
+            try:
+                bpc_rbv =  mybpc.get_all_float() # get all float data from the controller
+                return bpc_rbv
+            except Exception as e:
+                logger.info("In function: " + inspect.stack()[0][3] + ' ' + str(e))
+                return [NaN]*24
 
     def run(self):
         """
@@ -1197,7 +1199,8 @@ class mainWindow(QTabWidget):
             QMessageBox.StandardButton.Yes)
             if reply == QMessageBox.StandardButton.Yes:
                 self.quit_flag = 1
-                mybpc.close_comm()
+                if not debug_mode:
+                    mybpc.close_comm()
                 if PV != '':
                     server_thread.stop()
                 self.mthread.stop()
@@ -1208,7 +1211,8 @@ class mainWindow(QTabWidget):
             else:
                 pass
         if self.quit_flag == 1:
-            mybpc.close_comm()
+            if not debug_mode:
+                mybpc.close_comm()
             if PV != '':
                 server_thread.stop()
             self.mthread.stop()
@@ -1234,12 +1238,15 @@ def dir_path(save_path):
 if __name__ == '__main__':
     # user options to run multiple instances with different configurations for example
     parser = ArgumentParser(prog = 'bpc-monitor',
-                            description='Configure bpc-monitor.')
+                            description='Configure bpc-monitor.',
+                            epilog='A utility to log data and estimate lHe usage from the back pressure controller')
     parser.add_argument('-i', '--host', help='specify the host address', default='172.30.33.212')
     parser.add_argument('-p', '--port',  help='specify the port', default='20256', type=int)
     parser.add_argument('-e', '--epics_pv',  help='Specify the PV epics prefix', default='')
     parser.add_argument( '-s', '--save_path', help='Specify data directory', default="C:" + sep + "_datacache_", type=dir_path)
+    parser.add_argument( '-l', '--log_path', help='Specify log directory', default="C:" + sep + "_logcache_", type=dir_path)
     parser.add_argument('-m', '--mail', help='Specify receipients email address', default='')
+    parser.add_argument('-d', '--debug', help='Debugging mode', action='store_true')
     
     # parser.add_argument( '-l', '--log-path', help='Specify log directory', default=logdir)
     args = parser.parse_args(sys.argv[1:])
@@ -1247,7 +1254,17 @@ if __name__ == '__main__':
     port = args.port
     PV = args.epics_pv
     datadir = args.save_path
+    logdir = args.log_path
     receiver = args.mail
+    debug_mode = args.debug
+    
+    # define the file handler and formatting
+    lfname = logdir + sep + 'bpc-monitor' + '.log'
+    file_handler = TimedRotatingFileHandler(lfname, when='midnight')
+    fmt = logging.Formatter('%(asctime)s : %(levelname)s : %(name)s : %(message)s')
+    file_handler.setFormatter(fmt)
+    logger.addHandler(file_handler)
+
     # logger.info("In function: " +  inspect.stack()[0][3] + "EPICS PV for this server: " + str(PV))
     # Handle high resolution displays:
     if hasattr(QtCore.Qt, 'AA_EnableHighDpiScaling'):
@@ -1262,14 +1279,18 @@ if __name__ == '__main__':
     if PV != '':
         server = SimpleServer()
         server.createPV(prefix, pvdb)
-    mybpc = Vision130.Vision130Driver(myserver, port)
+    if not debug_mode:
+        mybpc = Vision130.Vision130Driver(myserver, port)
     # Create the main window
     main_window = mainWindow()
     # Remove the title bar and set to fixed geometry to match our touch screen display
     # main_window.setWindowFlags(QtCore.Qt.FramelessWindowHint)
     main_window.setGeometry(500, 500, WIDTH, HEIGHT)
     # Set the program version
-    main_window.setWindowTitle("BPC Logger " + __version__)
+    if debug_mode:
+        main_window.setWindowTitle("BPC Monitor " + __version__ + ' Debug mode')
+    else:
+        main_window.setWindowTitle("BPC Monitor " + __version__)
     main_window.show()
     # handle ctrl+c event
     signal.signal(signal.SIGINT, _sigint_handler)
