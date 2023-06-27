@@ -78,7 +78,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 # python globals
-__version__ = '1.7' # Program version string
+__version__ = '1.8' # Program version string
 MAIN_THREAD_POLL = 1000 # in ms (1 s)
 EMAIL_POLL = 1.44e7 # in ms (4 hours)
 He_EXP_RATIO = 1./754.2 # liquid to gas expansion ratio for Helium at 1 atm and 70 F
@@ -147,12 +147,10 @@ pvdb = {
         'HE_FLOW':          {'prec'  : 6,
                              'unit'  : 'l/min',
                              'scan'  : 1},
-        'LHE_LEFT':         {'type'  : 'string',
-                             'prec'  : 3,
+        'LHE_LEFT':         {'prec'  : 3,
                              'unit'  : 'l',
                              'scan'  : 1},
-        'LHE_FIN':          {'type'  : 'string',
-                             'prec'  : 2,
+        'LHE_FIN':          {'prec'  : 2,
                              'unit'  : 'day',
                              'scan'  : 1},
         }
@@ -946,7 +944,7 @@ class mainWindow(QTabWidget):
     def set_est_lHe(self, calc_time_to_threshold):
         self.lbl_lHe_threshold_time_est_rbv.setText(calc_time_to_threshold + ' days')
         if PV != '':
-            self.drv.write('LHE_FIN', str(calc_time_to_threshold))
+            self.drv.write('LHE_FIN', float(calc_time_to_threshold))
             self.drv.updatePVs()
 
     def set_recovered(self, recovered):
@@ -967,7 +965,7 @@ class mainWindow(QTabWidget):
                         # self.email_timer.start(3600000) # test
                         self.email_timer.start(EMAIL_POLL)
         if PV != '':
-            self.drv.write('LHE_LEFT', remaining_lHe)
+            self.drv.write('LHE_LEFT', float(remaining_lHe))
             self.drv.updatePVs()
             
     def send_email(self,):
@@ -1248,7 +1246,10 @@ if __name__ == '__main__':
     parser.add_argument('-m', '--mail', help='Specify receipients email address', default='')
     parser.add_argument('-d', '--debug', help='Debugging mode', action='store_true')
     
-    # parser.add_argument( '-l', '--log-path', help='Specify log directory', default=logdir)
+    args, unk = parser.parse_known_args()
+    if unk:
+        logger.info("Warning: Ignoring unknown arguments: {:}".format(unk))
+        pass
     args = parser.parse_args(sys.argv[1:])
     myserver = args.host
     port = args.port

@@ -5,7 +5,7 @@ __maintainer__ 	=       "Alireza Panna"
 __email__ 	    =       "alireza.panna@nist.gov"
 __status__ 	    =       "Stable"
 __date__        =       "03/25/2023"
-__version__     =       "1.7"
+__version__     =       "1.8"
 
 TODO            =
 CHANGELOG       =       """
@@ -40,4 +40,5 @@ CHANGELOG       =       """
                         061723: Bug fixes, changed from % to liters to display remaining lHe and setting lHe threshold, added new epics pv's
                         061723: More bug fixes, update to 1.6
                         061823: FIX: make the program threadsafe, add email feature, update to 1.7
+                        062623: FIX: make LHE_FIN and LHE_LEFT records float, add debug flag to run in debug mode
                         """
