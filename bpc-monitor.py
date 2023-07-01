@@ -1,4 +1,3 @@
-#! /usr/bin/env python
 # Note: For the CCC dewars: 1 inch of lHe is 1 Ltr of lHe
 import sys
 from os import environ, chdir, sep, path, mkdir, getcwd, scandir
@@ -32,7 +31,7 @@ from time import strftime, time, perf_counter, sleep
 import inspect, signal
 # controller class
 import Vision130
-from numpy import NaN, mean, array
+from numpy import NaN, mean, array, Inf, isnan
 # matplotlib imports
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg, NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
@@ -77,12 +76,17 @@ logger = logging.getLogger(__name__)
 # set the log level
 logger.setLevel(logging.INFO)
 
+# import ctypes
+# kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+# process_array = (ctypes.c_uint8 * 1)()
+# num_processes = kernel32.GetConsoleProcessList(process_array, 1)
+# if num_processes < 3: ctypes.WinDLL('user32').ShowWindow(kernel32.GetConsoleWindow(), 0)
 # python globals
-__version__ = '1.8' # Program version string
+__version__ = '1.82' # Program version string
 MAIN_THREAD_POLL = 1000 # in ms (1 s)
 EMAIL_POLL = 1.44e7 # in ms (4 hours)
 He_EXP_RATIO = 1./754.2 # liquid to gas expansion ratio for Helium at 1 atm and 70 F
-WIDTH = 450
+WIDTH = 455
 HEIGHT= 430
 HIST = 24
 WORKERS = 8
@@ -104,7 +108,7 @@ params = {
            'figure.max_open_warning': 20,
            'figure.facecolor': '#f0f0f0',
            'figure.edgecolor': 'white',
-           'figure.dpi': 100,
+           'figure.dpi': 120,
            'axes.spines.top': True,
            'axes.spines.bottom': True,
            'axes.spines.left': True,
@@ -124,6 +128,7 @@ params = {
            'xtick.direction':   'in',     # direction: {in, out, inout}
            'ytick.direction':   'in',     # direction: {in, out, inout}
            'savefig.dpi': 300,
+           'savefig.facecolor': '#f0f0f0',
            'figure.raise_window' : True
           }
 
@@ -163,11 +168,11 @@ class myDriver(Driver):
 class MplCanvas(FigureCanvasQTAgg):
 
     def __init__(self, parent=None, width=5, height=2, dpi=180):
-        self.fig = Figure(figsize=(width, height), dpi=dpi)
+        self.fig = Figure(figsize=(width, height), dpi=dpi, facecolor='#f0f0f0')
+        super(MplCanvas, self).__init__(self.fig)
         self.ax1 = self.fig.add_subplot(111)
         self.ax_settings()
-        super(MplCanvas, self).__init__(self.fig)
-
+        
     def ax_settings(self, ):
         #logger.info ('In function: ' + inspect.stack()[0][3])
         locator =   AutoDateLocator(minticks=5, maxticks=5)
@@ -183,8 +188,8 @@ class mainThread(QThread, QObject):
     # define the signals that this thread calls
     update_data = pyqtSignal(list)
     plot_temp = pyqtSignal()
-    lHe_est_time_to_threshold = pyqtSignal(str)
-    remaining_lHe_signal = pyqtSignal(str)
+    lHe_est_time_to_threshold = pyqtSignal(float)
+    remaining_lHe_signal = pyqtSignal(float)
     rec_signal = pyqtSignal(float)
 
     def __init__(self):
@@ -196,8 +201,8 @@ class mainThread(QThread, QObject):
         QtCore.QObject.__init__(self)
         self.setTerminationEnabled(True)
         self.integrated_lHe_used = 0.0
-        self.remaining_lHe = ''
-        self.calc_time_to_threshold = ''
+        self.remaining_lHe = NaN
+        self.calc_time_to_threshold = Inf
         self._kill = False
         self.loop_time = 0
         self.rec = []
@@ -261,31 +266,31 @@ class mainThread(QThread, QObject):
                                 # remaining lHe in dewar in percent
                                 # remaining_lHe_perc = 100.0 - (self.integrated_lHe_used/start_lHe)*100.0
                                 # remaining_lHe used in litres
-                                self.remaining_lHe = str(round((start_lHe - self.integrated_lHe_used), 4))
+                                self.remaining_lHe = round((start_lHe - self.integrated_lHe_used), 4)
                                 # print ("Integrated: ", self.integrated_lHe_used, "Remaining %:", remaining_lHe_perc)
                                 if float(self.remaining_lHe) <= 0:
-                                    self.remaining_lHe = str(0)
+                                    self.remaining_lHe = 0
                             except Exception as e:
                                 logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
                                 pass
                             if THRESHOLD_LHE != '' and float(THRESHOLD_LHE) < start_lHe:
                                 start_lHe_threshold_corr = start_lHe - float(THRESHOLD_LHE)
-                                self.calc_time_to_threshold = str(round(((start_lHe_threshold_corr - self.integrated_lHe_used)/mean(self.rec)), 2))
+                                self.calc_time_to_threshold = round(((start_lHe_threshold_corr - self.integrated_lHe_used)/mean(self.rec)), 2)
                                     
                                 #     main_window.lbl_lHe_per_remain_rbv.setStyleSheet("color: red; background-color: black;")
                                 # else:
                                 #     main_window.lbl_lHe_per_remain_rbv.setStyleSheet("color: rgb(0, 170, 0); background-color: black;")
                             else:
-                                self.calc_time_to_threshold = ''
+                                self.calc_time_to_threshold = Inf
                     else:
                         # start lHe <=0
-                        self.remaining_lHe = str(0)
-                        self.calc_time_to_threshold = ''
+                        self.remaining_lHe = NaN
+                        self.calc_time_to_threshold = Inf
                         self.integrated_lHe_used = 0
                 else:
                     # if start ltr text == ''
-                    self.remaining_lHe = str(0)
-                    self.calc_time_to_threshold = ''
+                    self.remaining_lHe = NaN
+                    self.calc_time_to_threshold = Inf
                     self.integrated_lHe_used = 0
 
                 self.update_data.emit(all_rbv)
@@ -300,7 +305,7 @@ class mainThread(QThread, QObject):
                 self.update_data.emit(all_rbv)
                 self.lHe_est_time_to_threshold.emit(self.calc_time_to_threshold)
                 self.rec_signal.emit(recovered)
-                self.remaining_lHe_signal.emit(str(0))
+                self.remaining_lHe_signal.emit(NaN)
                 # emit this signal last
                 self.plot_temp.emit()
                 logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
@@ -942,7 +947,10 @@ class mainWindow(QTabWidget):
         THRESHOLD_LHE = self.le_lHe_threshold.text()
 
     def set_est_lHe(self, calc_time_to_threshold):
-        self.lbl_lHe_threshold_time_est_rbv.setText(calc_time_to_threshold + ' days')
+        if calc_time_to_threshold == Inf:
+            self.lbl_lHe_threshold_time_est_rbv.setText('') 
+        else:
+            self.lbl_lHe_threshold_time_est_rbv.setText(str(round(calc_time_to_threshold, 2)) + ' days')
         if PV != '':
             self.drv.write('LHE_FIN', float(calc_time_to_threshold))
             self.drv.updatePVs()
@@ -955,7 +963,11 @@ class mainWindow(QTabWidget):
 
     def set_remaining_lHe(self, remaining_lHe):
         global EMAIL_POLL
-        self.lbl_lHe_per_remain_rbv.setText(str(remaining_lHe))
+        if isnan(remaining_lHe):
+            self.lbl_lHe_per_remain_rbv.setText('')
+        else:
+            self.lbl_lHe_per_remain_rbv.setText(str(round(remaining_lHe, 3)))
+            
         if THRESHOLD_LHE != '':
             if float(remaining_lHe) <= float(THRESHOLD_LHE):
                 
@@ -964,7 +976,7 @@ class mainWindow(QTabWidget):
                         self.send_email()
                         # self.email_timer.start(3600000) # test
                         self.email_timer.start(EMAIL_POLL)
-        if PV != '':
+        if PV != '' and remaining_lHe != '':
             self.drv.write('LHE_LEFT', float(remaining_lHe))
             self.drv.updatePVs()
             
@@ -980,7 +992,8 @@ class mainWindow(QTabWidget):
                    <body>
                    <p>Hello user,<br>
                       The LHe level in your dewar is below the set threshold level.<br>
-                      Please re-fill or exchange dewar.<br><br>
+                      Remaining lHe in your dewar: """ + self.lbl_lHe_per_remain_rbv.text() + """ ltrs
+                     <br>Please re-fill or exchange dewar.<br><br>
                       Thank you<br><br>
                       Best,<br>
                       Your friendly service galley lHe monitor
@@ -1229,15 +1242,16 @@ def _sigint_handler(*args):
     QtGui.QApplication.quit()
 
 def dir_path(save_path):
-    if  not path.isdir(save_path):
+    save_path = str(save_path)
+    if not path.isdir(save_path):
         mkdir(save_path)
     return save_path
 
-if __name__ == '__main__':
+def parse_args(*argv):
     # user options to run multiple instances with different configurations for example
     parser = ArgumentParser(prog = 'bpc-monitor',
                             description='Configure bpc-monitor.',
-                            epilog='A utility to log data and estimate lHe usage from the back pressure controller')
+                            epilog='A utility to log data and estimate lHe usage from the back pressure controller', add_help=True)
     parser.add_argument('-i', '--host', help='specify the host address', default='172.30.33.212')
     parser.add_argument('-p', '--port',  help='specify the port', default='20256', type=int)
     parser.add_argument('-e', '--epics_pv',  help='Specify the PV epics prefix', default='')
@@ -1250,7 +1264,15 @@ if __name__ == '__main__':
     if unk:
         logger.info("Warning: Ignoring unknown arguments: {:}".format(unk))
         pass
-    args = parser.parse_args(sys.argv[1:])
+    return args
+
+def main(*argv):
+    pa = parse_args()
+    return(pa)
+
+if __name__ == '__main__':
+    args = main(*sys.argv[1:])
+    # args = parser.parse_args(sys.argv[1:])
     myserver = args.host
     port = args.port
     PV = args.epics_pv
@@ -1258,14 +1280,12 @@ if __name__ == '__main__':
     logdir = args.log_path
     receiver = args.mail
     debug_mode = args.debug
-    
     # define the file handler and formatting
     lfname = logdir + sep + 'bpc-monitor' + '.log'
     file_handler = TimedRotatingFileHandler(lfname, when='midnight')
     fmt = logging.Formatter('%(asctime)s : %(levelname)s : %(name)s : %(message)s')
     file_handler.setFormatter(fmt)
     logger.addHandler(file_handler)
-
     # logger.info("In function: " +  inspect.stack()[0][3] + "EPICS PV for this server: " + str(PV))
     # Handle high resolution displays:
     if hasattr(QtCore.Qt, 'AA_EnableHighDpiScaling'):

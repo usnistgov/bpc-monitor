@@ -2,11 +2,13 @@
 
 block_cipher = None
 
-import sys, site, os
-import shutil
-PACKAGE_SITE= site.getusersitepackages()
+from site import getusersitepackages
+from os import environ
+#import shutil
+
+PACKAGE_SITE= getusersitepackages()
 print ("Site packages", PACKAGE_SITE)
-config_dest = os.environ.get('USERPROFILE') + '\\.bpc\\config.ini'
+#config_dest = environ.get('USERPROFILE') + '\\.bpc\\config.ini'
 a = Analysis(
     ['bpc-monitor.py'],
     pathex=[''],
@@ -48,5 +50,4 @@ exe = EXE(
     icon=".\\icons\\main.ico",
     entitlements_file=None,
 )
-
-shutil.copyfile('config.ini', '{0}/config.ini'.format(DISTPATH))
+#shutil.copyfile('config.ini', '{0}/config.ini'.format(DISTPATH))

@@ -1,2 +1,2 @@
-pyinstaller --clean --log-level=INFO --upx-dir=".\\upx-3.95-win64" bpc-monitor.spec
+pyinstaller --clean --log-level=INFO --upx-dir=".\\upx-4.0.2-win64" bpc-monitor.spec
 pause

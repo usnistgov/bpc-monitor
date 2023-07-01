@@ -18,7 +18,7 @@ To install the dependencies just use
  ```
  Optionally one can see all the options that this program uses by typing:
  ```
- python bpc-monitor.py -h
+ python bpc-monitor.py -h | more
  ```
  The optional arguments are:
  ```
