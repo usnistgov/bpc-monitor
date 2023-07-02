@@ -82,7 +82,7 @@ logger.setLevel(logging.INFO)
 # num_processes = kernel32.GetConsoleProcessList(process_array, 1)
 # if num_processes < 3: ctypes.WinDLL('user32').ShowWindow(kernel32.GetConsoleWindow(), 0)
 # python globals
-__version__ = '1.82' # Program version string
+__version__ = '1.9' # Program version string
 MAIN_THREAD_POLL = 1000 # in ms (1 s)
 EMAIL_POLL = 1.44e7 # in ms (4 hours)
 He_EXP_RATIO = 1./754.2 # liquid to gas expansion ratio for Helium at 1 atm and 70 F
@@ -337,6 +337,7 @@ class aboutWindow(QWidget):
         self.te_about.append("EPICS PV for this server: " + str(PV))
         self.te_about.append("EPICS records: " + str(list(pvdb.keys())))
         self.te_about.append("Current data folder: " + str(datadir))
+        self.te_about.append("Current log folder: " + str(logdir))
 
         layout = QVBoxLayout()
         layout.addWidget(self.te_about)
@@ -765,16 +766,16 @@ class mainWindow(QTabWidget):
         self.tab2.setLayout(layout)
 
     def plot_my_data(self,):
+        global WORKERS
         #logger.info("In function: " + inspect.stack()[0][3])
         self.btn_plot.setEnabled(False)
         try:
-            #print ("In plot_my_data")
             with ThreadPoolExecutor(max_workers=WORKERS) as executor:
                 self.df_bpcCtrl = (executor.submit(self.get_my_data))
             self.df_bpcCtrl = self.df_bpcCtrl.result()
             self.redraw()
         except Exception as e:
-            logger.info("In function: " +  inspect.stack()[0][3] + "Exception: " + str(e))
+            logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
             pass
         self.btn_plot.setEnabled(True)
 
@@ -1247,7 +1248,7 @@ def dir_path(save_path):
         mkdir(save_path)
     return save_path
 
-def parse_args(*argv):
+if __name__ == '__main__':
     # user options to run multiple instances with different configurations for example
     parser = ArgumentParser(prog = 'bpc-monitor',
                             description='Configure bpc-monitor.',
@@ -1259,20 +1260,10 @@ def parse_args(*argv):
     parser.add_argument( '-l', '--log_path', help='Specify log directory', default="C:" + sep + "_logcache_", type=dir_path)
     parser.add_argument('-m', '--mail', help='Specify receipients email address', default='')
     parser.add_argument('-d', '--debug', help='Debugging mode', action='store_true')
-    
     args, unk = parser.parse_known_args()
     if unk:
         logger.info("Warning: Ignoring unknown arguments: {:}".format(unk))
         pass
-    return args
-
-def main(*argv):
-    pa = parse_args()
-    return(pa)
-
-if __name__ == '__main__':
-    args = main(*sys.argv[1:])
-    # args = parser.parse_args(sys.argv[1:])
     myserver = args.host
     port = args.port
     PV = args.epics_pv
