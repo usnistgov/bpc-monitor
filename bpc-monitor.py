@@ -1,4 +1,5 @@
 # Note: For the CCC dewars: 1 inch of lHe is 1 Ltr of lHe
+# -*- coding: utf-8 -*-
 import sys
 from os import environ, chdir, sep, path, mkdir, getcwd, scandir
 from argparse import ArgumentParser
@@ -82,7 +83,7 @@ logger.setLevel(logging.INFO)
 # num_processes = kernel32.GetConsoleProcessList(process_array, 1)
 # if num_processes < 3: ctypes.WinDLL('user32').ShowWindow(kernel32.GetConsoleWindow(), 0)
 # python globals
-__version__ = '1.9' # Program version string
+__version__ = '1.91' # Program version string
 MAIN_THREAD_POLL = 1000 # in ms (1 s)
 EMAIL_POLL = 1.44e7 # in ms (4 hours)
 He_EXP_RATIO = 1./754.2 # liquid to gas expansion ratio for Helium at 1 atm and 70 F
@@ -245,7 +246,7 @@ class mainThread(QThread, QObject):
                 #logger.info("In function: " + inspect.stack()[0][3])
                 start_time = perf_counter()
                 all_rbv = self._getRbvs()
-                if all_rbv[10] != NaN:
+                if not (isnan(all_rbv[10])):
                     recovered = all_rbv[10]*60*24/(1./He_EXP_RATIO)
                     self.rec.append(recovered)
                 else:
@@ -256,7 +257,7 @@ class mainThread(QThread, QObject):
                     # get the starting lHe from user
                     start_lHe = float(START_LHE)
                     if start_lHe > 0:
-                        if recovered != NaN:  
+                        if not (isnan(recovered)):  
                             try:
                                 # instantaneous lHe being used in litres/sec
                                 inst_lHe_used = (recovered/86400.0)*self.loop_time
@@ -266,7 +267,7 @@ class mainThread(QThread, QObject):
                                 # remaining lHe in dewar in percent
                                 # remaining_lHe_perc = 100.0 - (self.integrated_lHe_used/start_lHe)*100.0
                                 # remaining_lHe used in litres
-                                self.remaining_lHe = round((start_lHe - self.integrated_lHe_used), 4)
+                                    self.remaining_lHe = round((start_lHe - self.integrated_lHe_used), 4)
                                 # print ("Integrated: ", self.integrated_lHe_used, "Remaining %:", remaining_lHe_perc)
                                 if float(self.remaining_lHe) <= 0:
                                     self.remaining_lHe = 0
@@ -573,7 +574,7 @@ class mainWindow(QTabWidget):
         self.lbl_flow.setGeometry(QtCore.QRect(10, 40, 121, 31))
         self.lbl_flow.setFont(self.font)
         self.lbl_flow.setStyleSheet("background-color: rgb(255, 255, 255,0);\n"
-                                    "color: rgb(0, 0, 255);")
+                                    "color: rgb(0, 0, 0);")
         self.lbl_flow.setObjectName("lbl_flow")
 
         self.lbl_valve_rbv = QLabel(parent=self.main_frame)
@@ -616,7 +617,7 @@ class mainWindow(QTabWidget):
         self.lbl_rec.setMinimumSize(QtCore.QSize(0, 31))
         self.lbl_rec.setFont(self.font)
         self.lbl_rec.setStyleSheet("background-color: rgb(255, 255, 255,0);\n"
-                                   "color: rgb(0, 0, 0);")
+                                   "color: rgb(238, 130, 238);")
         self.lbl_rec.setObjectName("lbl_rec")
 
         self.lbl_lHe_per_remain = QLabel(parent=self.main_frame)
@@ -803,8 +804,7 @@ class mainWindow(QTabWidget):
             i = 0
             for filename in scandir(datadir + '\\'):
                 self.filename = filename.name
-
-                if filename.name != '':
+                if self.filename != '' and (self.filename.split('.')[-1]).rstrip() == 'txt':
                     if self.cb_time.currentText() == 'all':
                         mydata.append(self._read_helper(datadir + sep + filename.name))
 
@@ -1082,15 +1082,15 @@ class mainWindow(QTabWidget):
         """
         #logger.info("In function: " + inspect.stack()[0][3])
         labelStyle_y1 = {'color': 'red', 'font-size': '8pt'}
-        labelStyle_y2 = {'color': 'blue', 'font-size': '8pt'}
+        labelStyle_y2 = {'color': 'violet' , 'font-size': '8pt'}
         labelStyle_x = {'color': 'black', 'font-size': '8pt'}
         self.pw.plotItem.clear()
         self.pw_2.plotItem.clear()
         self.pw.setBackground((0,0,0,240))
         self.pw_2.setBackground((0,0,0,240))
         self.pw.plotItem.setLabel(axis='left', text='P', units= 'mbar', **labelStyle_y1)
-        self.pw_2.plotItem.setLabel(axis='left', text='lHe Rec.', units= 'l/day',  **labelStyle_y2)
-        self.pw_2.plotItem.setLabel(axis='bottom', text = 'time', units= 'HH:MM:SS', **labelStyle_x)
+        self.pw_2.plotItem.setLabel(axis='left', text='lHe Rec.', units='l/day',  **labelStyle_y2)
+        self.pw_2.plotItem.setLabel(axis='bottom', text = 'time', units='HH:MM:SS', **labelStyle_x)
         self.pw.plotItem.showGrid(x=True, y=False)
         self.pw_2.plotItem.showGrid(x=True, y=False)
         date_axis = pg.DateAxisItem()
@@ -1131,12 +1131,11 @@ class mainWindow(QTabWidget):
         rec = self.lbl_rec_rbv.text()
         valve = self.lbl_valve_rbv.text()
 
-        if pressure != '0':
+        if pressure != 'nan' or flow != 'nan' or valve != 'nan':
             self.data_pressure.append({'x':ct, 'y':float(pressure),})
             self.data_flow.append({'x':ct, 'y':float(rec),})
             with open(self.fname, 'a') as f:
-                if str(pressure) != 'nan':
-                    f.write(str(self.timestamp) + '\t' + str(pressure) + '\t' + str(flow) + '\t' + str(valve) + '\n')
+                f.write(str(self.timestamp) + '\t' + str(pressure) + '\t' + str(flow) + '\t' + str(valve) + '\n')
         ct_list = [item['x'] for item in self.data_flow]
         pressure_list = [item['y'] for item in self.data_pressure]
         flow_list = [item['y'] for item in self.data_flow]
@@ -1165,11 +1164,11 @@ class mainWindow(QTabWidget):
         # count_list_2 = range(len(flow_list))
         # print ('after: ', len(pressure_list))
         try:
-            self.curve1.setData(x = ct_list, y = pressure_list, pen = 'r', shadowPen = 'r', symbol='o', symbolSize=1.5, symbolBrush='r', connect='finite')
-            self.curve2.setData(x = ct_list, y = flow_list, pen = 'b', shadowPen = 'b', symbol='x', symbolSize=1.5, symbolBrush='b', connect='finite')
+            self.curve1.setData(x=ct_list, y=pressure_list, pen = 'r', shadowPen = 'r', symbol='o', symbolSize=1.5, symbolBrush='r', connect='finite')
+            self.curve2.setData(x=ct_list, y=flow_list, pen=(138,43,226), shadowPen =(138,43,226), symbol='x', symbolSize=1.5, symbolBrush= (138,43,226), connect='finite')
         except:
-            self.curve1.setData(x = ct_list, y = 0.00, pen = 'r', symbol='o', symbolSize=1.5, symbolBrush='r', connect='finite')
-            self.curve2.setData(x = ct_list, y = 0.00, pen = 'b', symbol='x', symbolSize=1.5, symbolBrush='b', connect='finite')
+            self.curve1.setData(x=ct_list, y=0.00, pen='r', symbol='o', symbolSize=1.5, symbolBrush='r', connect='finite')
+            self.curve2.setData(x=ct_list, y=0.00, pen=(138,43,226), symbol='x', symbolSize=1.5, symbolBrush=(138,43,226), connect='finite')
 
     def closeEvent(self, event):
         """

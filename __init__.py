@@ -5,7 +5,7 @@ __maintainer__ 	=       "Alireza Panna"
 __email__ 	    =       "alireza.panna@nist.gov"
 __status__ 	    =       "Stable"
 __date__        =       "03/25/2023"
-__version__     =       "1.9"
+__version__     =       "1.91"
 
 TODO            =
 CHANGELOG       =       """
@@ -42,4 +42,6 @@ CHANGELOG       =       """
                         061823: FIX: make the program threadsafe, add email feature, update to 1.7
                         062623: FIX: make LHE_FIN and LHE_LEFT records float, add debug flag to run in debug mode
                         070223: FIX: Add location of log directory in About section, revert argparse code
+                        070523: FIX: NaN issues in code, changed lHe rec plot color to be better visible, history plot ignores files that don't end with .txt, 
+                                update to 1.91
                         """
