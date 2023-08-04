@@ -83,7 +83,7 @@ logger.setLevel(logging.INFO)
 # num_processes = kernel32.GetConsoleProcessList(process_array, 1)
 # if num_processes < 3: ctypes.WinDLL('user32').ShowWindow(kernel32.GetConsoleWindow(), 0)
 # python globals
-__version__ = '1.91' # Program version string
+__version__ = '1.93' # Program version string
 MAIN_THREAD_POLL = 1000 # in ms (1 s)
 EMAIL_POLL = 1.44e7 # in ms (4 hours)
 He_EXP_RATIO = 1./754.2 # liquid to gas expansion ratio for Helium at 1 atm and 70 F
@@ -93,6 +93,7 @@ HIST = 24
 WORKERS = 8
 START_LHE = ''
 THRESHOLD_LHE = ''
+START_LHE_CHANGED = 0
 
 chdir(base_dir)
 # load the main ui file
@@ -173,7 +174,7 @@ class MplCanvas(FigureCanvasQTAgg):
         super(MplCanvas, self).__init__(self.fig)
         self.ax1 = self.fig.add_subplot(111)
         self.ax_settings()
-        
+
     def ax_settings(self, ):
         #logger.info ('In function: ' + inspect.stack()[0][3])
         locator =   AutoDateLocator(minticks=5, maxticks=5)
@@ -223,7 +224,7 @@ class mainThread(QThread, QObject):
             debug_bpc_rbv[-1] = uniform(0,100)
             debug_bpc_rbv[10] = uniform (0, 5)
             return debug_bpc_rbv
-        else:  
+        else:
             try:
                 bpc_rbv =  mybpc.get_all_float() # get all float data from the controller
                 return bpc_rbv
@@ -241,6 +242,7 @@ class mainThread(QThread, QObject):
         global MAIN_THREAD_POLL
         global START_LHE
         global THRESHOLD_LHE
+        global START_LHE_CHANGED
         while 1 and not self._kill:
             try:
                 #logger.info("In function: " + inspect.stack()[0][3])
@@ -257,12 +259,15 @@ class mainThread(QThread, QObject):
                     # get the starting lHe from user
                     start_lHe = float(START_LHE)
                     if start_lHe > 0:
-                        if not (isnan(recovered)):  
+                        if not (isnan(recovered)):
                             try:
+                                if START_LHE_CHANGED:
+                                    self.integrated_lHe_used = 0
+                                    START_LHE_CHANGED = 0
                                 # instantaneous lHe being used in litres/sec
                                 inst_lHe_used = (recovered/86400.0)*self.loop_time
                                 # integrated lHe being used in liters
-                                if inst_lHe_used != NaN:
+                                if not isnan(inst_lHe_used):
                                     self.integrated_lHe_used = self.integrated_lHe_used + inst_lHe_used
                                 # remaining lHe in dewar in percent
                                 # remaining_lHe_perc = 100.0 - (self.integrated_lHe_used/start_lHe)*100.0
@@ -274,10 +279,10 @@ class mainThread(QThread, QObject):
                             except Exception as e:
                                 logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
                                 pass
-                            if THRESHOLD_LHE != '' and float(THRESHOLD_LHE) < start_lHe:
+                            if THRESHOLD_LHE != '' and float(THRESHOLD_LHE) < start_lHe and mean(self.rec) != 0:
                                 start_lHe_threshold_corr = start_lHe - float(THRESHOLD_LHE)
                                 self.calc_time_to_threshold = round(((start_lHe_threshold_corr - self.integrated_lHe_used)/mean(self.rec)), 2)
-                                    
+
                                 #     main_window.lbl_lHe_per_remain_rbv.setStyleSheet("color: red; background-color: black;")
                                 # else:
                                 #     main_window.lbl_lHe_per_remain_rbv.setStyleSheet("color: rgb(0, 170, 0); background-color: black;")
@@ -369,7 +374,6 @@ class mainWindow(QTabWidget):
         # program flags
         self.quit_flag = 0
         self.draw_bpc_flag = 0
-        self.start_lHe_flag = 0
         self.timestamp = datetime.now()
         self.settings = QSettings("global_settings.ini", QSettings.Format.IniFormat)
         # self.setupUi(self)
@@ -378,7 +382,7 @@ class mainWindow(QTabWidget):
         self.timer.timeout.connect(self.calc_uptime)
         self.email_timer = QTimer()
         self.email_timer.timeout.connect(self.send_email)
-        
+
         self.plot_settings()
         self.fname = datadir + '\\bpc_log_' + strftime("%Y%m%d") + '.txt'
         self.data_pressure = deque(maxlen=int(86400/(HIST*MAIN_THREAD_POLL*1e-3))) #
@@ -935,13 +939,16 @@ class mainWindow(QTabWidget):
          except Exception as e:
              logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
              pass
-        
+
     def lHe_start_updated(self,):
         global START_LHE
+        global START_LHE_CHANGED
         START_LHE = self.le_start_ltr.text()
-        # reset the flag for email and stop the timer if the lHe start is updated
-        self.email_timer.stop()
-        self.start_lHe_flag = 0
+        self.lbl_lHe_per_remain_rbv.setText(self.le_start_ltr.text())
+        START_LHE_CHANGED = 1
+        # stop the email timer if the lHe start is updated
+        if self.email_timer.isActive():
+            self.email_timer.stop()
 
     def lHe_threshold_updated(self,):
         global THRESHOLD_LHE
@@ -949,7 +956,7 @@ class mainWindow(QTabWidget):
 
     def set_est_lHe(self, calc_time_to_threshold):
         if calc_time_to_threshold == Inf:
-            self.lbl_lHe_threshold_time_est_rbv.setText('') 
+            self.lbl_lHe_threshold_time_est_rbv.setText('')
         else:
             self.lbl_lHe_threshold_time_est_rbv.setText(str(round(calc_time_to_threshold, 2)) + ' days')
         if PV != '':
@@ -964,23 +971,22 @@ class mainWindow(QTabWidget):
 
     def set_remaining_lHe(self, remaining_lHe):
         global EMAIL_POLL
+        global THRESHOLD_LHE
         if isnan(remaining_lHe):
             self.lbl_lHe_per_remain_rbv.setText('')
         else:
             self.lbl_lHe_per_remain_rbv.setText(str(round(remaining_lHe, 3)))
-            
-        if THRESHOLD_LHE != '':
-            if float(remaining_lHe) <= float(THRESHOLD_LHE):
-                
+        if THRESHOLD_LHE != '' and not isnan(remaining_lHe):
+            if remaining_lHe <= float(THRESHOLD_LHE):
                 if receiver != '':
                     if not self.email_timer.isActive():
                         self.send_email()
                         # self.email_timer.start(3600000) # test
                         self.email_timer.start(EMAIL_POLL)
-        if PV != '' and remaining_lHe != '':
-            self.drv.write('LHE_LEFT', float(remaining_lHe))
+        if PV != '':
+            self.drv.write('LHE_LEFT', remaining_lHe)
             self.drv.updatePVs()
-            
+
     def send_email(self,):
         # print("sending email...")
         resource = "smtp.nist.gov"

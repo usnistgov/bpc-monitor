@@ -5,7 +5,7 @@ __maintainer__ 	=       "Alireza Panna"
 __email__ 	    =       "alireza.panna@nist.gov"
 __status__ 	    =       "Stable"
 __date__        =       "03/25/2023"
-__version__     =       "1.91"
+__version__     =       "1.93"
 
 TODO            =
 CHANGELOG       =       """
@@ -44,4 +44,6 @@ CHANGELOG       =       """
                         070223: FIX: Add location of log directory in About section, revert argparse code
                         070523: FIX: NaN issues in code, changed lHe rec plot color to be better visible, history plot ignores files that don't end with .txt, 
                                 update to 1.91
+                        070723: FIX: More stringent checks on when to send mail
+                        080223: FIX: lHe_start_updated() fixed by adding check for email timer active
                         """
