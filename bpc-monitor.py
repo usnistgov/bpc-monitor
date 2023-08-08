@@ -83,8 +83,9 @@ logger.setLevel(logging.INFO)
 # num_processes = kernel32.GetConsoleProcessList(process_array, 1)
 # if num_processes < 3: ctypes.WinDLL('user32').ShowWindow(kernel32.GetConsoleWindow(), 0)
 # python globals
-__version__ = '1.93' # Program version string
+__version__ = '1.94' # Program version string
 MAIN_THREAD_POLL = 1000 # in ms (1 s)
+# EMAIL_POLL = 300000 # for testing
 EMAIL_POLL = 1.44e7 # in ms (4 hours)
 He_EXP_RATIO = 1./754.2 # liquid to gas expansion ratio for Helium at 1 atm and 70 F
 WIDTH = 455
@@ -982,7 +983,7 @@ class mainWindow(QTabWidget):
                     if not self.email_timer.isActive():
                         self.send_email()
                         # self.email_timer.start(3600000) # test
-                        self.email_timer.start(EMAIL_POLL)
+                        self.email_timer.start(int(EMAIL_POLL))
         if PV != '':
             self.drv.write('LHE_LEFT', remaining_lHe)
             self.drv.updatePVs()
@@ -992,7 +993,6 @@ class mainWindow(QTabWidget):
         resource = "smtp.nist.gov"
         port = 25
         sender = "alireza.panna@nist.gov"
-        # print (receiver)
         subject = "LHe at threshold"
         body = """ <html>
                    <head></head>
@@ -1010,9 +1010,8 @@ class mainWindow(QTabWidget):
         msg = MIMEText(body, "html")
         msg["From"] = sender
         msg["Subject"] = subject
-        msg["To"] = receiver
+        msg["To"] = ", ".join(receiver)
         smtp_server = SMTP(resource, port)
-
         try:
             smtp_server.sendmail(sender, receiver, msg.as_string())
         finally:
@@ -1274,7 +1273,8 @@ if __name__ == '__main__':
     PV = args.epics_pv
     datadir = args.save_path
     logdir = args.log_path
-    receiver = args.mail
+    receiver = args.mail.split(';')
+    print (receiver)
     debug_mode = args.debug
     # define the file handler and formatting
     lfname = logdir + sep + 'bpc-monitor' + '.log'
