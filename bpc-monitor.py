@@ -83,7 +83,7 @@ logger.setLevel(logging.INFO)
 # num_processes = kernel32.GetConsoleProcessList(process_array, 1)
 # if num_processes < 3: ctypes.WinDLL('user32').ShowWindow(kernel32.GetConsoleWindow(), 0)
 # python globals
-__version__ = '1.94' # Program version string
+__version__ = '2.0' # Program version string
 MAIN_THREAD_POLL = 1000 # in ms (1 s)
 # EMAIL_POLL = 300000 # for testing
 EMAIL_POLL = 1.44e7 # in ms (4 hours)
@@ -256,7 +256,7 @@ class mainThread(QThread, QObject):
                     recovered = NaN
                 # all_rbv.insert(len(all_rbv), recovered)
                 # if user enters lHe start ltrs...
-                if START_LHE != '' and START_LHE != '-':
+                if START_LHE != '':
                     # get the starting lHe from user
                     start_lHe = float(START_LHE)
                     if start_lHe > 0:
@@ -367,6 +367,21 @@ class mainWindow(QTabWidget):
         self.font = QFont()
         self.font.setPointSize(10)
         self.sc = MplCanvas(self, width=5, height=2, dpi=180)
+        self.timer = QTimer()
+        # self.timer.setTimerType(QtCore.Qt.PreciseTimer)
+        self.timer.timeout.connect(self.calc_uptime)
+        self.email_timer = QTimer()
+        self.email_timer.timeout.connect(self.send_email)
+        self.restore_start_lHe = ''
+        self.fname = datadir + '\\bpc_log_' + strftime("%Y%m%d") + '.txt'
+        self.save_restore_fname = datadir + '\\bpc_save_restore' + '.sav'
+        try:
+            with open(self.save_restore_fname, 'r') as f:
+                self.restore_start_lHe = (f.read()).split(' ')[-1]
+        except Exception as e:
+            self.restore_start_lHe = ''
+            logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
+            pass
         self.tab1_ui()
         self.tab2_ui()
         # self.tab3_ui()
@@ -378,15 +393,8 @@ class mainWindow(QTabWidget):
         self.timestamp = datetime.now()
         self.settings = QSettings("global_settings.ini", QSettings.Format.IniFormat)
         # self.setupUi(self)
-        self.timer = QTimer()
-        # self.timer.setTimerType(QtCore.Qt.PreciseTimer)
-        self.timer.timeout.connect(self.calc_uptime)
-        self.email_timer = QTimer()
-        self.email_timer.timeout.connect(self.send_email)
-
         self.plot_settings()
-        self.fname = datadir + '\\bpc_log_' + strftime("%Y%m%d") + '.txt'
-        self.data_pressure = deque(maxlen=int(86400/(HIST*MAIN_THREAD_POLL*1e-3))) #
+        self.data_pressure = deque(maxlen=int(86400/(HIST*MAIN_THREAD_POLL*1e-3)))
         self.data_flow = deque(maxlen=int(86400/(HIST*MAIN_THREAD_POLL*1e-3)))
         # start the main thread
         self.mthread = mainThread()
@@ -669,9 +677,11 @@ class mainWindow(QTabWidget):
         self.lbl_start_ltr.setObjectName("lbl_start_ltr")
 
         self.le_start_ltr = QLineEdit(parent=self.tab1)
-        self.le_start_ltr.setValidator(QDoubleValidator())
+        self.le_start_ltr.setValidator(QDoubleValidator(0, 10000, 3))
         self.le_start_ltr.setGeometry(QtCore.QRect(119, 204, 51, 25))
         self.le_start_ltr.returnPressed.connect(self.lHe_start_updated)
+        self.le_start_ltr.setText(self.restore_start_lHe)
+        self.lHe_start_updated()
         self.le_start_ltr.setObjectName("le_start_ltr")
 
         self.lbl_lHe_threshold = QLabel(parent=self.tab1)
@@ -683,7 +693,7 @@ class mainWindow(QTabWidget):
         self.lbl_lHe_threshold.setObjectName("lbl_lHe_threshold")
 
         self.le_lHe_threshold = QLineEdit(parent=self.tab1)
-        self.le_lHe_threshold.setValidator(QDoubleValidator())
+        self.le_lHe_threshold.setValidator(QDoubleValidator(0, 10000, 3))
         self.le_lHe_threshold.setGeometry(QtCore.QRect(119, 234, 51, 25))
         self.le_lHe_threshold.returnPressed.connect(self.lHe_threshold_updated)
         self.le_lHe_threshold.setObjectName("le_lHe_threshold")
@@ -1141,6 +1151,8 @@ class mainWindow(QTabWidget):
             self.data_flow.append({'x':ct, 'y':float(rec),})
             with open(self.fname, 'a') as f:
                 f.write(str(self.timestamp) + '\t' + str(pressure) + '\t' + str(flow) + '\t' + str(valve) + '\n')
+            with open(self.save_restore_fname, 'w') as f:
+                f.write(str(datetime.now())[:-3] + ' lHe remaining [ltrs]: ' + str(self.lbl_lHe_per_remain_rbv.text()))
         ct_list = [item['x'] for item in self.data_flow]
         pressure_list = [item['y'] for item in self.data_pressure]
         flow_list = [item['y'] for item in self.data_flow]
@@ -1274,7 +1286,7 @@ if __name__ == '__main__':
     datadir = args.save_path
     logdir = args.log_path
     receiver = args.mail.split(';')
-    print (receiver)
+    #print (receiver)
     debug_mode = args.debug
     # define the file handler and formatting
     lfname = logdir + sep + 'bpc-monitor' + '.log'
@@ -1291,9 +1303,11 @@ if __name__ == '__main__':
     # Create the Qt application
     app = QApplication(sys.argv)
     # create pcas server
-    if not PV.endswith(':'):
-        prefix = PV + ':'
     if PV != '':
+        if not PV.endswith(':'):
+            prefix = PV + ':'
+        else:
+            prefix = PV
         server = SimpleServer()
         server.createPV(prefix, pvdb)
     if not debug_mode:
