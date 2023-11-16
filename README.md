@@ -22,7 +22,7 @@ To install the dependencies just use
  ```
  The optional arguments are:
  ```
- options:
+options:
   -h, --help            show this help message and exit
   -i HOST, --host HOST  specify the host address
   -p PORT, --port PORT  specify the port
@@ -34,6 +34,10 @@ To install the dependencies just use
                         Specify log directory
   -m MAIL, --mail MAIL  Specify receipients email address
   -d, --debug           Debugging mode
+  -t THRESHOLD, --threshold THRESHOLD
+                        Specify lHe threshold in ltrs
+  -c CORRECTION, --correction CORRECTION
+                        Specify correction factor between 1.0 and 2.0
  ```
 The repository also contains build scripts to build a local binary using pyinstaller. See bpc-monitor.spec\
 Tested on Windows 7,10, and 11 only.

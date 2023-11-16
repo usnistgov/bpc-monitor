@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 import sys
 from os import environ, chdir, sep, path, mkdir, getcwd, scandir
-from argparse import ArgumentParser
+from argparse import ArgumentParser, ArgumentTypeError
 
 try:
     environ["QT_API"] = "pyqt6"
@@ -83,7 +83,7 @@ logger.setLevel(logging.INFO)
 # num_processes = kernel32.GetConsoleProcessList(process_array, 1)
 # if num_processes < 3: ctypes.WinDLL('user32').ShowWindow(kernel32.GetConsoleWindow(), 0)
 # python globals
-__version__ = '2.0' # Program version string
+__version__ = '2.1' # Program version string
 MAIN_THREAD_POLL = 1000 # in ms (1 s)
 # EMAIL_POLL = 300000 # for testing
 EMAIL_POLL = 1.44e7 # in ms (4 hours)
@@ -250,7 +250,7 @@ class mainThread(QThread, QObject):
                 start_time = perf_counter()
                 all_rbv = self._getRbvs()
                 if not (isnan(all_rbv[10])):
-                    recovered = all_rbv[10]*60*24/(1./He_EXP_RATIO)
+                    recovered = (correction*all_rbv[10])*60*24/(1./He_EXP_RATIO)
                     self.rec.append(recovered)
                 else:
                     recovered = NaN
@@ -695,6 +695,8 @@ class mainWindow(QTabWidget):
         self.le_lHe_threshold = QLineEdit(parent=self.tab1)
         self.le_lHe_threshold.setValidator(QDoubleValidator(0, 10000, 3))
         self.le_lHe_threshold.setGeometry(QtCore.QRect(119, 234, 51, 25))
+        if THRESHOLD_LHE != '':
+            self.le_lHe_threshold.setText(THRESHOLD_LHE)
         self.le_lHe_threshold.returnPressed.connect(self.lHe_threshold_updated)
         self.le_lHe_threshold.setObjectName("le_lHe_threshold")
 
@@ -938,14 +940,14 @@ class mainWindow(QTabWidget):
          try:
              self.timestamp = datetime.now()
              self.lbl_pressure_rbv.setText(str(round(all_rbv[20], 3)))
-             self.lbl_flow_rbv.setText(str(round(all_rbv[10], 3)))
+             self.lbl_flow_rbv.setText(str(round(all_rbv[10]*correction, 3)))
              self.lbl_valve_rbv.setText(str(round(all_rbv[-1], 3)))
              # rec = all_rbv[10]*60*24/(1./He_EXP_RATIO)
              # write to epics pv records
              if PV != '':
                  self.drv.write('PRESSURE', all_rbv[20])
                  self.drv.write('VALVE', all_rbv[-1] )
-                 self.drv.write('HE_FLOW', all_rbv[10])
+                 self.drv.write('HE_FLOW', all_rbv[10]*correction)
                  self.drv.updatePVs()
          except Exception as e:
              logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
@@ -989,7 +991,7 @@ class mainWindow(QTabWidget):
             self.lbl_lHe_per_remain_rbv.setText(str(round(remaining_lHe, 3)))
         if THRESHOLD_LHE != '' and not isnan(remaining_lHe):
             if remaining_lHe <= float(THRESHOLD_LHE):
-                if receiver != '':
+                if receiver != ['']:
                     if not self.email_timer.isActive():
                         self.send_email()
                         # self.email_timer.start(3600000) # test
@@ -1152,7 +1154,10 @@ class mainWindow(QTabWidget):
             with open(self.fname, 'a') as f:
                 f.write(str(self.timestamp) + '\t' + str(pressure) + '\t' + str(flow) + '\t' + str(valve) + '\n')
             with open(self.save_restore_fname, 'w') as f:
-                f.write(str(datetime.now())[:-3] + ' lHe remaining [ltrs]: ' + str(self.lbl_lHe_per_remain_rbv.text()))
+                if str(self.lbl_lHe_per_remain_rbv.text() != ''):
+                    self.lbl_lHe_per_remain_rbv.text().rstrip('\s')
+                    self.lbl_lHe_per_remain_rbv.text().lstrip('\s')
+                    f.write(str(datetime.now())[:-3] + ' lHe remaining [ltrs]: ' + str(self.lbl_lHe_per_remain_rbv.text()))
         ct_list = [item['x'] for item in self.data_flow]
         pressure_list = [item['y'] for item in self.data_pressure]
         flow_list = [item['y'] for item in self.data_flow]
@@ -1264,6 +1269,20 @@ def dir_path(save_path):
         mkdir(save_path)
     return save_path
 
+def range_limited_float_type(arg):
+    """ 
+    Type function for argparse - a float within some predefined bounds
+    """
+    MIN_VAL = 1
+    MAX_VAL = 2
+    try:
+        f = float(arg)
+    except ValueError:    
+        raise ArgumentTypeError("Must be a floating point number")
+    if f < MIN_VAL or f > MAX_VAL:
+        raise ArgumentTypeError("Argument must be <= " + str(MAX_VAL) + " and >= " + str(MIN_VAL))
+    return f
+
 if __name__ == '__main__':
     # user options to run multiple instances with different configurations for example
     parser = ArgumentParser(prog = 'bpc-monitor',
@@ -1272,10 +1291,13 @@ if __name__ == '__main__':
     parser.add_argument('-i', '--host', help='specify the host address', default='172.30.33.212')
     parser.add_argument('-p', '--port',  help='specify the port', default='20256', type=int)
     parser.add_argument('-e', '--epics_pv',  help='Specify the PV epics prefix', default='')
-    parser.add_argument( '-s', '--save_path', help='Specify data directory', default="C:" + sep + "_datacache_", type=dir_path)
-    parser.add_argument( '-l', '--log_path', help='Specify log directory', default="C:" + sep + "_logcache_", type=dir_path)
+    parser.add_argument('-s', '--save_path', help='Specify data directory', default="C:" + sep + "_datacache_", type=dir_path)
+    parser.add_argument('-l', '--log_path', help='Specify log directory', default="C:" + sep + "_logcache_", type=dir_path)
     parser.add_argument('-m', '--mail', help='Specify receipients email address', default='')
     parser.add_argument('-d', '--debug', help='Debugging mode', action='store_true')
+    parser.add_argument('-t', '--threshold',  help='Specify lHe threshold in ltrs', default='', type=str)
+    parser.add_argument('-c', '--correction',  help='Specify correction factor between 1.0 and 2.0', default='1.0', type=range_limited_float_type)
+
     args, unk = parser.parse_known_args()
     if unk:
         logger.info("Warning: Ignoring unknown arguments: {:}".format(unk))
@@ -1286,14 +1308,41 @@ if __name__ == '__main__':
     datadir = args.save_path
     logdir = args.log_path
     receiver = args.mail.split(';')
-    #print (receiver)
     debug_mode = args.debug
+    threshold = args.threshold
+    correction = args.correction
+    
+    if correction == '':
+        correction = 1.0
+    if threshold != '':
+        THRESHOLD_LHE = threshold
+    else:
+        THRESHOLD_LHE = ''
+    print('Server: ', myserver, 
+          'Port: ', port,
+          'PV: ', PV, 
+          'Datadir: ', datadir,
+          'Logdir: ', logdir,
+          'Receiver: ', receiver,
+          'Debug mode: ', debug_mode,
+          'Threshold: ', THRESHOLD_LHE,
+          'Correction: ', correction)
     # define the file handler and formatting
     lfname = logdir + sep + 'bpc-monitor' + '.log'
     file_handler = TimedRotatingFileHandler(lfname, when='midnight')
     fmt = logging.Formatter('%(asctime)s : %(levelname)s : %(name)s : %(message)s')
     file_handler.setFormatter(fmt)
     logger.addHandler(file_handler)
+    logger.info('Starting the bpc-monitor with the following settings: ' + \
+                'Server: ' + str(myserver) + \
+                ', Port: ' +  str(port) + \
+                ', PV: ' +  str(PV) + \
+                ', Datadir: ' + str(datadir) + \
+                ', Logdir: ' + str(logdir) + \
+                ', Receiver: ' + str(receiver) + \
+                ', Debug mode: ' + str(debug_mode) + \
+                ', Threshold: ' + str(THRESHOLD_LHE) + \
+                ', Correction Factor: ' + str(correction))
     # logger.info("In function: " +  inspect.stack()[0][3] + "EPICS PV for this server: " + str(PV))
     # Handle high resolution displays:
     if hasattr(QtCore.Qt, 'AA_EnableHighDpiScaling'):

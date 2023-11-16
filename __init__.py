@@ -5,7 +5,7 @@ __maintainer__ 	=       "Alireza Panna"
 __email__ 	    =       "alireza.panna@nist.gov"
 __status__ 	    =       "Stable"
 __date__        =       "03/25/2023"
-__version__     =       "2.0"
+__version__     =       "2.1"
 
 TODO            =
 CHANGELOG       =       """
@@ -50,4 +50,6 @@ CHANGELOG       =       """
                                 addresses need to be seperated by ;, update version to 1.94
                         101223: ENH: save the remaining lHe value (from QLabel) and set it as the start lHe (QLineEdit) on program start up. Fix issue with prefix definition 
                                 in PV. update version to 2.0
+                        111523: ENH: added two new command line options: -t sets the lHe threshold specified by user, -c adds a multipicative correction factor to the He flow (in l/min
+                                startup option values are saved in log file.                                                                                                                                                    )
                         """
