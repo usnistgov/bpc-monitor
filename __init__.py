@@ -5,7 +5,7 @@ __maintainer__ 	=       "Alireza Panna"
 __email__ 	    =       "alireza.panna@nist.gov"
 __status__ 	    =       "Stable"
 __date__        =       "03/25/2023"
-__version__     =       "2.1"
+__version__     =       "2.2"
 
 TODO            =
 CHANGELOG       =       """
@@ -51,5 +51,6 @@ CHANGELOG       =       """
                         101223: ENH: save the remaining lHe value (from QLabel) and set it as the start lHe (QLineEdit) on program start up. Fix issue with prefix definition 
                                 in PV. update version to 2.0
                         111523: ENH: added two new command line options: -t sets the lHe threshold specified by user, -c adds a multipicative correction factor to the He flow (in l/min
-                                startup option values are saved in log file.                                                                                                                                                    )
+                                startup option values are saved in log file.
+                        012824: FIX: more stringent check to verify that the save lHe remaining value is a number in the save_restore file.                                                                                                                                                    )
                         """
