@@ -83,7 +83,7 @@ logger.setLevel(logging.INFO)
 # num_processes = kernel32.GetConsoleProcessList(process_array, 1)
 # if num_processes < 3: ctypes.WinDLL('user32').ShowWindow(kernel32.GetConsoleWindow(), 0)
 # python globals
-__version__ = '2.1' # Program version string
+__version__ = '2.2' # Program version string
 MAIN_THREAD_POLL = 1000 # in ms (1 s)
 # EMAIL_POLL = 300000 # for testing
 EMAIL_POLL = 1.44e7 # in ms (4 hours)
