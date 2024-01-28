@@ -83,7 +83,7 @@ logger.setLevel(logging.INFO)
 # num_processes = kernel32.GetConsoleProcessList(process_array, 1)
 # if num_processes < 3: ctypes.WinDLL('user32').ShowWindow(kernel32.GetConsoleWindow(), 0)
 # python globals
-__version__ = '2.2' # Program version string
+__version__ = '2.1' # Program version string
 MAIN_THREAD_POLL = 1000 # in ms (1 s)
 # EMAIL_POLL = 300000 # for testing
 EMAIL_POLL = 1.44e7 # in ms (4 hours)
@@ -377,10 +377,9 @@ class mainWindow(QTabWidget):
         self.save_restore_fname = datadir + '\\bpc_save_restore' + '.sav'
         try:
             with open(self.save_restore_fname, 'r') as f:
-                if (isDigit((f.read()).split(' ')[-1])):
-                    self.restore_start_lHe = (f.read()).split(' ')[-1]
-                else:
-                    self.restore_start_lHe = ''
+                restore_start_lHe = (f.read()).split(' ')[-1]
+                if (isDigit(restore_start_lHe)):
+                    self.restore_start_lHe = restore_start_lHe
         except Exception as e:
             self.restore_start_lHe = ''
             logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
@@ -1159,7 +1158,7 @@ class mainWindow(QTabWidget):
             self.lbl_lHe_per_remain_rbv.text().rstrip('\s')
             self.lbl_lHe_per_remain_rbv.text().lstrip('\s')
             with open(self.save_restore_fname, 'w') as f:
-                if str(self.lbl_lHe_per_remain_rbv.text()) != '' and (isDigit(str(self.lbl_lHe_per_remain_rbv.text()))):
+                if str(self.lbl_lHe_per_remain_rbv.text() != '' and isDigit(self.lbl_lHe_per_remain_rbv.text())):
                     f.write(str(datetime.now())[:-3] + ' lHe remaining [ltrs]: ' + str(self.lbl_lHe_per_remain_rbv.text()))
         ct_list = [item['x'] for item in self.data_flow]
         pressure_list = [item['y'] for item in self.data_pressure]
@@ -1265,19 +1264,19 @@ def _sigint_handler(*args):
     if PV != '':
         server_thread.stop()
     QtGui.QApplication.quit()
-
-def dir_path(save_path):
-    save_path = str(save_path)
-    if not path.isdir(save_path):
-        mkdir(save_path)
-    return save_path
-
+    
 def isDigit(x):
     try:
         float(x)
         return True
     except ValueError:
         return False
+
+def dir_path(save_path):
+    save_path = str(save_path)
+    if not path.isdir(save_path):
+        mkdir(save_path)
+    return save_path
 
 def range_limited_float_type(arg):
     """ 
