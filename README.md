@@ -40,7 +40,7 @@ options:
                         Specify correction factor between 1.0 and 2.0
  ```
 The repository also contains build scripts to build a local binary using pyinstaller. See bpc-monitor.spec\
-Tested on Windows 7,10, and 11 only.
+Tested on Windows 7, 10, and 11 only.
 
 ## Contact
 alireza.panna@nist.gov\

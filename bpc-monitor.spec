@@ -26,6 +26,13 @@ a = Analysis(
     noarchive=False,
 )
 
+splash = Splash('.\\icons\\splash-screen.jpg',
+                binaries=a.binaries,
+                datas=a.datas,
+                text_pos=(10, 30),
+                text_size=10,
+                text_color='black')
+
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 exe = EXE(
@@ -35,6 +42,8 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
+    splash,                   # <-- both, splash target
+    splash.binaries,          # <-- and splash binaries
     name='bpc-monitor.exe',
     debug=False,
     bootloader_ignore_signals=False,

@@ -5,7 +5,7 @@ __maintainer__ 	=       "Alireza Panna"
 __email__ 	    =       "alireza.panna@nist.gov"
 __status__ 	    =       "Stable"
 __date__        =       "03/25/2023"
-__version__     =       "2.2"
+__version__     =       "2.3"
 
 TODO            =
 CHANGELOG       =       """
@@ -52,5 +52,7 @@ CHANGELOG       =       """
                                 in PV. update version to 2.0
                         111523: ENH: added two new command line options: -t sets the lHe threshold specified by user, -c adds a multipicative correction factor to the He flow (in l/min
                                 startup option values are saved in log file.
-                        012824: FIX: more stringent check to verify that the save lHe remaining value is a number in the save_restore file.                                                                                                                                                    )
+                        012824: FIX: more stringent check to verify that the save lHe remaining value is a number in the save_restore file.
+                        042824: ADD: added splash screen support, added command line option -dl to log the lHe remaining in ltrs in the log file, fix email issue when threshold
+                                was updated, update version to 2.3                                                                                                                                                   )
                         """

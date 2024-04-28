@@ -61,6 +61,7 @@ if getattr(sys, 'frozen', False):
     base_dir = sys._MEIPASS
     # base_dir = os.path.dirname(sys.executable)
     running_mode = 'Frozen/executable'
+    import pyi_splash
 else:
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -83,7 +84,7 @@ logger.setLevel(logging.INFO)
 # num_processes = kernel32.GetConsoleProcessList(process_array, 1)
 # if num_processes < 3: ctypes.WinDLL('user32').ShowWindow(kernel32.GetConsoleWindow(), 0)
 # python globals
-__version__ = '2.2' # Program version string
+__version__ = '2.3' # Program version string
 MAIN_THREAD_POLL = 1000 # in ms (1 s)
 # EMAIL_POLL = 300000 # for testing
 EMAIL_POLL = 1.44e7 # in ms (4 hours)
@@ -299,7 +300,6 @@ class mainThread(QThread, QObject):
                     self.remaining_lHe = NaN
                     self.calc_time_to_threshold = Inf
                     self.integrated_lHe_used = 0
-
                 self.update_data.emit(all_rbv)
                 self.lHe_est_time_to_threshold.emit(self.calc_time_to_threshold)
                 self.rec_signal.emit(recovered)
@@ -317,6 +317,8 @@ class mainThread(QThread, QObject):
                 self.plot_temp.emit()
                 logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
                 pass
+            if debug_log_flag:
+                logger.info("Remaining lHe: " + str(self.remaining_lHe))
             sleep(MAIN_THREAD_POLL*0.001)
             # # makes sure that the GUI thread gets processed
             # app.processEvents()
@@ -448,6 +450,8 @@ class mainWindow(QTabWidget):
             self.drv = myDriver()
         #logger.info ("In function: " + inspect.stack()[0][3])
         self.start_time = time()
+        if getattr(sys, 'frozen', False):
+            pyi_splash.close()
 
     def _create_menubar(self, ):
         self.menuBar = QMenuBar(self)
@@ -538,16 +542,14 @@ class mainWindow(QTabWidget):
 
         self.main_frame = QFrame(parent=self.tab1)
         self.main_frame.setEnabled(True)
-        self.main_frame.setGeometry(QtCore.QRect(5, 30, 171, 170))
+        self.main_frame.setGeometry(QtCore.QRect(8, 33, 168, 165))
         sizePolicy.setHeightForWidth(self.main_frame.sizePolicy().hasHeightForWidth())
         self.main_frame.setSizePolicy(sizePolicy)
-        self.main_frame.setMinimumSize(QtCore.QSize(150, 170))
-        self.main_frame.setMaximumSize(QtCore.QSize(181, 170))
         self.main_frame.setAutoFillBackground(True)
         self.main_frame.setStyleSheet("background-color: rgb(140, 140, 140, 150);")
         self.main_frame.setFrameShape(QFrame.Shape.Box)
         self.main_frame.setFrameShadow(QFrame.Shadow.Raised)
-        self.main_frame.setLineWidth(3)
+        self.main_frame.setLineWidth(2)
         self.main_frame.setObjectName("main_frame")
 
         self.lbl_flow_rbv = QLabel(parent=self.main_frame)
@@ -968,6 +970,11 @@ class mainWindow(QTabWidget):
     def lHe_threshold_updated(self,):
         global THRESHOLD_LHE
         THRESHOLD_LHE = self.le_lHe_threshold.text()
+        if self.lbl_lHe_per_remain_rbv.text() != '':
+            if float(self.lbl_lHe_per_remain_rbv.text()) >= float(THRESHOLD_LHE):
+            # stop the email timer if the lHe start is updated
+                if self.email_timer.isActive():
+                    self.email_timer.stop()
 
     def set_est_lHe(self, calc_time_to_threshold):
         if calc_time_to_threshold == Inf:
@@ -1304,6 +1311,7 @@ if __name__ == '__main__':
     parser.add_argument('-l', '--log_path', help='Specify log directory', default="C:" + sep + "_logcache_", type=dir_path)
     parser.add_argument('-m', '--mail', help='Specify receipients email address', default='')
     parser.add_argument('-d', '--debug', help='Debugging mode', action='store_true')
+    parser.add_argument('-dl', '--debug_log', help='Save all debugging logs', action='store_true')
     parser.add_argument('-t', '--threshold',  help='Specify lHe threshold in ltrs', default='', type=str)
     parser.add_argument('-c', '--correction',  help='Specify correction factor between 1.0 and 2.0', default='1.0', type=range_limited_float_type)
 
@@ -1320,6 +1328,7 @@ if __name__ == '__main__':
     debug_mode = args.debug
     threshold = args.threshold
     correction = args.correction
+    debug_log_flag = args.debug_log
     
     if correction == '':
         correction = 1.0
@@ -1335,7 +1344,8 @@ if __name__ == '__main__':
           'Receiver: ', receiver,
           'Debug mode: ', debug_mode,
           'Threshold: ', THRESHOLD_LHE,
-          'Correction: ', correction)
+          'Correction: ', correction, 
+          'Debug log: ', debug_log_flag)
     # define the file handler and formatting
     lfname = logdir + sep + 'bpc-monitor' + '.log'
     file_handler = TimedRotatingFileHandler(lfname, when='midnight')
@@ -1350,6 +1360,7 @@ if __name__ == '__main__':
                 ', Logdir: ' + str(logdir) + \
                 ', Receiver: ' + str(receiver) + \
                 ', Debug mode: ' + str(debug_mode) + \
+                ', Save debug log: ' + str(debug_log_flag) + \
                 ', Threshold: ' + str(THRESHOLD_LHE) + \
                 ', Correction Factor: ' + str(correction))
     # logger.info("In function: " +  inspect.stack()[0][3] + "EPICS PV for this server: " + str(PV))
