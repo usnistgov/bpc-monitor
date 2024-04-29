@@ -2,8 +2,8 @@ __author__      =       "Alireza Panna &  Frank Seifert"
 __copyright__ 	=       "This data is publicly available according to the NIST statements of copyright, fair use and licensing; see https://www.nist.gov/director/copyright-fair-use-and-licensing-statements-srd-data-and-software"
 __license__ 	=       "NIST"
 __maintainer__ 	=       "Alireza Panna"
-__email__ 	    =       "alireza.panna@nist.gov"
-__status__ 	    =       "Stable"
+__email__ 	=       "alireza.panna@nist.gov"
+__status__ 	=       "Stable"
 __date__        =       "03/25/2023"
 __version__     =       "2.3"
 
@@ -54,5 +54,5 @@ CHANGELOG       =       """
                                 startup option values are saved in log file.
                         012824: FIX: more stringent check to verify that the save lHe remaining value is a number in the save_restore file.
                         042824: ADD: added splash screen support, added command line option -dl to log the lHe remaining in ltrs in the log file, fix email issue when threshold
-                                was updated, update version to 2.3                                                                                                                                                   )
+                                was updated, update version to 2.3
                         """
