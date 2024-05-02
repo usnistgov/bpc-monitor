@@ -1,5 +1,5 @@
-# Note: For the CCC dewars: 1 inch of lHe is 1 Ltr of lHe
 # -*- coding: utf-8 -*-
+# Note: For the CCC dewars: 1 inch of lHe is 1 Ltr of lHe
 import sys
 from os import environ, chdir, sep, path, mkdir, getcwd, scandir
 from argparse import ArgumentParser, ArgumentTypeError
@@ -7,22 +7,24 @@ from argparse import ArgumentParser, ArgumentTypeError
 try:
     environ["QT_API"] = "pyqt6"
     from PyQt6 import QtCore, QtGui
-    from PyQt6.QtCore import pyqtSignal, QTimer, QThread, QSettings, QObject, QRect
+    from PyQt6.QtCore import pyqtSignal, QTimer, QThread, QSettings, QObject, QRect, QRunnable, pyqtSlot, QThreadPool
     from PyQt6.QtGui import QAction, QFont, QDoubleValidator, QIcon
     from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,\
                                 QLabel, QPushButton, QComboBox,QMessageBox, \
                                 QSystemTrayIcon, QStyle, QTabWidget, \
-                                QLineEdit, QFrame, QSizePolicy, QMenuBar, QMenu, QTextEdit)
+                                QLineEdit, QFrame, QSizePolicy, QMenuBar, QMenu, QTextEdit, \
+                                QDateTimeEdit)
     pixmapi = QStyle.StandardPixmap.SP_TitleBarMenuButton
 except ImportError:
     environ["QT_API"] = "pyqt5"
     from PyQt5 import QtCore, QtGui
     from PyQt5.QtGui import QFont, QDoubleValidator, QIcon
-    from PyQt5.QtCore import pyqtSignal, QTimer, QThread, QSettings, QObject, QRect
+    from PyQt5.QtCore import pyqtSignal, QTimer, QThread, QSettings, QObject, QRect, QRunnable, pyqtSlot, QThreadPool
     from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,\
                                 QLabel, QPushButton, QComboBox, QMessageBox, \
                                 QSystemTrayIcon, QStyle, QAction, QTabWidget,
-                                QLineEdit, QFrame, QSizePolicy, QMenuBar, QMenu, QTextEdit)
+                                QLineEdit, QFrame, QSizePolicy, QMenuBar, QMenu, QTextEdit, \
+                                QDateTimeEdit)
     pixmapi = QStyle.SP_TitleBarMenuButton
 
 import pyqtgraph as pg
@@ -32,7 +34,7 @@ from time import strftime, time, perf_counter, sleep
 import inspect, signal
 # controller class
 import Vision130
-from numpy import NaN, mean, array, Inf, isnan
+from numpy import NaN, mean, array, Inf, isnan, float64, int64, asarray
 # matplotlib imports
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg, NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
@@ -42,7 +44,7 @@ import matplotlib.style as mplstyle
 import matplotlib.pyplot as plt
 from concurrent.futures import ThreadPoolExecutor
 
-from pandas import read_csv, concat, to_datetime
+from pandas import read_csv, concat, to_datetime, set_option
 
 from pcaspy import SimpleServer, Driver
 from pcaspy.tools import ServerThread
@@ -84,18 +86,20 @@ logger.setLevel(logging.INFO)
 # num_processes = kernel32.GetConsoleProcessList(process_array, 1)
 # if num_processes < 3: ctypes.WinDLL('user32').ShowWindow(kernel32.GetConsoleWindow(), 0)
 # python globals
-__version__ = '2.3' # Program version string
+__version__ = '2.4' # Program version string
 MAIN_THREAD_POLL = 1000 # in ms (1 s)
 # EMAIL_POLL = 300000 # for testing
 EMAIL_POLL = 1.44e7 # in ms (4 hours)
-He_EXP_RATIO = 1./754.2 # liquid to gas expansion ratio for Helium at 1 atm and 70 F
-WIDTH = 455
-HEIGHT= 430
+#He_EXP_RATIO = 1./754.2 # liquid to gas expansion ratio for Helium at 1 atm and 70 F
+WIDTH = 470
+HEIGHT= 450
 HIST = 24
 WORKERS = 8
 START_LHE = ''
 THRESHOLD_LHE = ''
 START_LHE_CHANGED = 0
+# globals
+df_bpcCtrl =     None
 
 chdir(base_dir)
 # load the main ui file
@@ -110,7 +114,7 @@ params = {
            'text.usetex': False,
            'figure.figsize': [5,2],
            'figure.max_open_warning': 20,
-           'figure.facecolor': '#f0f0f0',
+           'figure.facecolor': 'white',
            'figure.edgecolor': 'white',
            'figure.dpi': 120,
            'axes.spines.top': True,
@@ -163,6 +167,7 @@ pvdb = {
                              'unit'  : 'day',
                              'scan'  : 1},
         }
+set_option('float_format', '{:f}'.format)
 
 class myDriver(Driver):
 
@@ -172,7 +177,7 @@ class myDriver(Driver):
 class MplCanvas(FigureCanvasQTAgg):
 
     def __init__(self, parent=None, width=5, height=2, dpi=180):
-        self.fig = Figure(figsize=(width, height), dpi=dpi, facecolor='#f0f0f0')
+        self.fig = Figure(figsize=(width, height), dpi=dpi, facecolor='white')
         super(MplCanvas, self).__init__(self.fig)
         self.ax1 = self.fig.add_subplot(111)
         self.ax_settings()
@@ -183,7 +188,7 @@ class MplCanvas(FigureCanvasQTAgg):
         date_form = ConciseDateFormatter(locator)
         self.ax1.xaxis.set_major_formatter(date_form)
         self.ax1.tick_params(axis='x', labelrotation = 45)
-        self.ax1.set_ylabel('lHe rec. (l/day)')
+        self.ax1.set_ylabel('lHe rec. [l/day]')
         self.ax1.set_xlabel('Date')
         self.fig.canvas.draw()
         # self.fig.tight_layout(pad=0.4, w_pad=1, h_pad=1.0)
@@ -251,7 +256,7 @@ class mainThread(QThread, QObject):
                 start_time = perf_counter()
                 all_rbv = self._getRbvs()
                 if not (isnan(all_rbv[10])):
-                    recovered = (correction*all_rbv[10])*60*24/(1./He_EXP_RATIO)
+                    recovered = (correction*all_rbv[10])*60*24/(expansion_ratio)
                     self.rec.append(recovered)
                 else:
                     recovered = NaN
@@ -332,11 +337,161 @@ class mainThread(QThread, QObject):
         self.quit()
         self.wait()
 
+class WorkerSignals(QObject):
+    # job completed signal
+    mysignalfin = pyqtSignal()
+
+class Worker(QRunnable):
+    def __init__(self, dirpath, duration, caller, start, end):
+       super(Worker, self).__init__()
+       self.signals = WorkerSignals()
+       self.dirpath = dirpath
+       self.filename = None
+       self.headers = ['Date', 'Pressure', 'Flow', 'Valve']
+       self.duration = duration
+       self.start = start
+       self.end = end
+       self.caller = caller
+
+    def _read_helper(self, filename,):
+        """
+        helper function for get_data
+        """
+        try:
+            mydata = []
+            mydata.append(read_csv(filename, sep='\t', dtype={0:"str", 1: "float16", 2:"float16", 3:"float16"}, \
+                                   on_bad_lines='skip', na_filter=True, index_col=False, memory_map=True, low_memory=True, \
+                                   usecols=[0,1,2,3], engine='c', names=self.headers, na_values='nan'))
+            return mydata
+        except Exception as e:
+            logger.info("In function: " +  inspect.stack()[0][3] + "In file: ", str(filename) + " Exception: " + str(e))
+
+    # @functools.lru_cache(maxsize=128)
+    def get_data(self,):
+        mydata = []
+        data   = []
+        get_data_start = perf_counter()
+        try:
+            i = 0
+            for filename in scandir(self.dirpath + '\\'):
+                self.filename = filename.name
+                if self.filename != '' and (self.filename.split('.')[-1]).rstrip() == 'txt':
+                    if self.caller == 1: # plot data
+                        if self.duration == 'all':
+                            mydata.append(self._read_helper(datadir + sep + filename.name))
+                        elif self.duration == '365 days':
+                            fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
+                            delta_time = (datetime.now() - fname_date).total_seconds()
+                            if (float(delta_time) <= 3.1536*1e7):
+                                mydata.append(self._read_helper(datadir + sep + filename.name))
+                        elif self.duration == '180 days':
+                            fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
+                            delta_time = (datetime.now() - fname_date).total_seconds()
+                            if (float(delta_time) <= 1.5552*1e7):
+                                mydata.append(self._read_helper(datadir + sep + filename.name))
+                        elif self.duration == '90 days':
+                            fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
+                            delta_time = (datetime.now() - fname_date).total_seconds()
+                            if (float(delta_time) <= 7.776*1e7):
+                                mydata.append(self._read_helper(datadir + sep + filename.name))
+                        elif self.duration == '30 days':
+                            fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
+                            delta_time = (datetime.now() - fname_date).total_seconds()
+                            if (float(delta_time) <= 2.592*1e6):
+                                mydata.append(self._read_helper(datadir + sep + filename.name))
+                        elif self.duration == '7 days':
+                            fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
+                            delta_time = (datetime.now() - fname_date).total_seconds()
+                            if (float(delta_time) <= 604800):
+                                mydata.append(self._read_helper(datadir + sep + filename.name))
+                        elif self.duration == '2 days':
+                            fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
+                            delta_time = (datetime.now() - fname_date).total_seconds()
+                            if (float(delta_time) <= 172800):
+                                mydata.append(self._read_helper(datadir + sep + filename.name))
+                        else:
+                            mydata.append(self._read_helper(datadir + sep + filename.name))
+
+                    elif self.caller == 2: # sum calculation
+                        fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
+                        if ((datetime.timestamp(fname_date) >=self.start or datetime.timestamp(fname_date) >=self.start) and \
+                           (datetime.timestamp(fname_date) <=self.end)):
+                                mydata.append(self._read_helper(datadir + sep + filename.name))
+                    else:
+                        mydata = []
+        except:
+            logger.info('Error reading file/getting data in filename: ' + str(self.filename) + ' ' + str(inspect.stack()[0][3]))
+            pass
+        if mydata != []:
+            for i in mydata:
+                data.extend(i)
+        else:
+            logger.info("Empty dataset")
+            pass
+        if data != []:
+            dfc = concat(data, ignore_index=True)
+            dfc['Date'] = to_datetime(dfc['Date'], utc=False)
+            dfc.insert(4, "lHe Rec. [ltrs/day]", dfc['Flow']*60*24/(expansion_ratio))
+            dfc.insert(5, "lHe Rec. [ltrs/sec]", (dfc['Flow']/60)/(expansion_ratio))
+            dfc.insert(6, "Timestamp", dfc.Date.values.astype(int64)//10**9)
+            dfc.set_index('Date', inplace=True)
+            # print (dfc.head(5))
+            resample_dfc = dfc.resample(self.binsize, axis=0, closed='left', label='left').mean()
+            resample_dfc.dropna(axis=0, inplace=True)
+            resample_dfc['Date'] = resample_dfc.index
+            get_data_end = perf_counter() - get_data_start
+            logger.info("Time taken to get and analyze data: " +  str(get_data_end))
+            return (resample_dfc)
+        else:
+            return
+
+    def get_bpc_data(self):
+        """
+        Returns
+        -------
+        resample_dfb : dataframe
+        """
+        global WORKERS
+        dfb = []
+        if main_window.btn_sum_rec.isChecked():
+            self.binsize = '1S'
+        else:
+            self.binsize = main_window.cb_resample.currentText()
+        with ThreadPoolExecutor(max_workers=WORKERS) as executor:
+            y1 = (executor.submit(self.get_data))
+        # print("This is result", y1.result())
+        if y1.result() is not None:
+            dfb = y1.result()
+            return (dfb)
+        else:
+            return
+
+    @pyqtSlot()
+    def run(self):
+        """
+        """
+        global df_bpcCtrl
+        try:
+            thread_start = perf_counter()
+            df_bpcCtrl = self.get_bpc_data()
+            thread_fin = perf_counter() - thread_start
+            logger.info ('Time taken to get and analyze all data: ' \
+                         + str(thread_fin))
+            self.signals.mysignalfin.emit()
+                # convert dataframe to list
+                # dfp_list = dfp.values.tolist()
+                # dfc_list = dfc.values.tolist()
+                # dfm_list = dfm.values.tolist()
+        except Exception as e:
+            logger.info ("Error in function " + inspect.stack()[0][3] + ': ' + str(e))
+            pass
+
 class aboutWindow(QWidget):
 
     def __init__(self):
         super().__init__()
         self.setWindowTitle("About")
+        self.setWindowIcon(QIcon(base_dir + r'\icons\main.jpg'))
         self.setFixedSize(300, 200)
         self.te_about = QTextEdit()
         self.te_about.setReadOnly(True)
@@ -391,11 +546,13 @@ class mainWindow(QTabWidget):
         # self.tab3_ui()
         self.setFixedSize(WIDTH, HEIGHT)
         self.tray_icon = None
+        self.p = None
         # program flags
         self.quit_flag = 0
         self.draw_bpc_flag = 0
         self.timestamp = datetime.now()
         self.settings = QSettings("global_settings.ini", QSettings.Format.IniFormat)
+        self.caller_id = 0
         # self.setupUi(self)
         self.plot_settings()
         self.data_pressure = deque(maxlen=int(86400/(HIST*MAIN_THREAD_POLL*1e-3)))
@@ -408,6 +565,8 @@ class mainWindow(QTabWidget):
         self.mthread.lHe_est_time_to_threshold.connect(self.set_est_lHe)
         self.mthread.rec_signal.connect(self.set_recovered)
         self.mthread.remaining_lHe_signal.connect(self.set_remaining_lHe)
+
+        self.threadpool = QThreadPool()
 
         self.tray_icon = QSystemTrayIcon(self)
         self.tray_icon.setIcon(self.style().standardIcon(pixmapi))
@@ -439,7 +598,7 @@ class mainWindow(QTabWidget):
         self.about_action.triggered.connect(self._about)
 
         self.cb_plt_hist.addItems(['1 min', '5 min', '1 hr', '2 hr', '12 hr', \
-                                   '1 d', '2 d', '1 w', '1 m', '1 y'])
+                                   '1 d', '2 d', '1 w', '30 d', '1 y'])
         self.cb_plt_hist.setCurrentText('1 hr')
         self.cb_plt_hist.activated.connect(self.set_plot_history)
         self.plt_history = self.cb_plt_hist.currentText()
@@ -473,17 +632,17 @@ class mainWindow(QTabWidget):
         sizePolicy.setVerticalStretch(0)
 
         self.lbl_uptime = QLabel(parent=self.tab1)
-        self.lbl_uptime.setGeometry(QRect(30, 347, 41, 20))
+        self.lbl_uptime.setGeometry(QRect(30, 360, 41, 20))
         self.lbl_uptime.setFont(self.font)
         self.lbl_uptime.setObjectName("lbl_uptime")
 
         self.lbl_plt_hist = QLabel(parent=self.tab1)
-        self.lbl_plt_hist.setGeometry(QRect(15, 307, 71, 20))
+        self.lbl_plt_hist.setGeometry(QRect(15, 310, 71, 20))
         self.lbl_plt_hist.setFont(self.font)
         self.lbl_plt_hist.setObjectName("lbl_plt_hist")
 
         self.pw_2 = pg.PlotWidget(parent=self.tab1)
-        self.pw_2.setGeometry(QRect(180, 220, 266, 179))
+        self.pw_2.setGeometry(QRect(180, 230, 286, 190))
         sizePolicy.setHeightForWidth(self.pw_2.sizePolicy().hasHeightForWidth())
         self.pw_2.setSizePolicy(sizePolicy)
         self.pw_2.setMaximumSize(QtCore.QSize(605, 16777215))
@@ -496,19 +655,19 @@ class mainWindow(QTabWidget):
         self.pw_2.setObjectName("pw_2")
 
         self.cb_plt_hist = QComboBox(parent=self.tab1)
-        self.cb_plt_hist.setGeometry(QtCore.QRect(15, 327, 71, 22))
+        self.cb_plt_hist.setGeometry(QtCore.QRect(15, 335, 71, 22))
         self.cb_plt_hist.setFont(self.font)
         self.cb_plt_hist.setObjectName("cb_plt_hist")
 
         self.btn_clr_plots = QPushButton(parent=self.tab1)
-        self.btn_clr_plots.setGeometry(QtCore.QRect(100, 322, 75, 31))
+        self.btn_clr_plots.setGeometry(QtCore.QRect(100, 330, 75, 31))
         self.btn_clr_plots.setFont(self.font)
         self.btn_clr_plots.setStyleSheet("background-color: rgb(0, 170, 0);\n"
                                          "color: rgb(255, 255, 255);")
         self.btn_clr_plots.setObjectName("btn_clr_plots")
 
         self.le_uptime = QLineEdit(parent=self.tab1)
-        self.le_uptime.setGeometry(QtCore.QRect(7, 370, 91, 31))
+        self.le_uptime.setGeometry(QtCore.QRect(7, 385, 91, 31))
         self.le_uptime.setFont(self.font)
         self.le_uptime.setLayoutDirection(QtCore.Qt.LayoutDirection.RightToLeft)
         self.le_uptime.setStyleSheet("background-color: rgb(0, 0, 0);\n"
@@ -517,7 +676,7 @@ class mainWindow(QTabWidget):
         self.le_uptime.setObjectName("le_uptime")
 
         self.label = QLabel(parent=self.tab1)
-        self.label.setGeometry(QtCore.QRect(10, 3, 437, 29))
+        self.label.setGeometry(QtCore.QRect(10, 3, 457, 29))
         font = QtGui.QFont()
         font.setFamily("MS Shell Dlg 2")
         font.setPointSize(13)
@@ -534,12 +693,11 @@ class mainWindow(QTabWidget):
         self.label.setObjectName("label")
 
         self.btn_quit = QPushButton(parent=self.tab1)
-        self.btn_quit.setGeometry(QtCore.QRect(100, 370, 75, 31))
+        self.btn_quit.setGeometry(QtCore.QRect(100, 385, 75, 31))
         self.btn_quit.setFont(self.font)
         self.btn_quit.setStyleSheet("background-color: rgb(255, 0, 0);\n"
                                     "color: rgb(255, 255, 255);")
         self.btn_quit.setObjectName("btn_quit")
-
         self.main_frame = QFrame(parent=self.tab1)
         self.main_frame.setEnabled(True)
         self.main_frame.setGeometry(QtCore.QRect(8, 33, 168, 165))
@@ -660,7 +818,7 @@ class mainWindow(QTabWidget):
         self.lbl_lHe_per_remain_rbv.setObjectName("lbl_lHe_per_remain_rbv")
 
         self.pw = pg.PlotWidget(parent=self.tab1)
-        self.pw.setGeometry(QtCore.QRect(180, 38, 266, 179))
+        self.pw.setGeometry(QtCore.QRect(180, 35, 286, 190))
         sizePolicy.setHeightForWidth(self.pw.sizePolicy().hasHeightForWidth())
         self.pw.setSizePolicy(sizePolicy)
         self.pw.setMaximumSize(QtCore.QSize(605, 16777215))
@@ -748,15 +906,17 @@ class mainWindow(QTabWidget):
 
     def tab2_ui(self, ):
         layout = QVBoxLayout()
+        layout1 = QHBoxLayout()
         layout2 = QHBoxLayout()
         toolbar = NavigationToolbar(self.sc, self)
+        _translate = QtCore.QCoreApplication.translate
         self.lbl_time = QLabel('HISTORY: ')
         self.cb_time = QComboBox()
-        self.cb_time.addItems(['last 48 hrs', 'last week', \
-                               'last month', 'last six months', 'last year', \
+        self.cb_time.addItems(['2 days', '7 days', \
+                               '30 days', '90 days', '180 days', '365 days', \
                                'all'])
         self.cb_time.setCurrentText('last 48 hrs')
-        self.cb_time.setFixedWidth(100)
+        self.cb_time.setFixedWidth(70)
         self.cb_time.setFixedHeight(20)
 
         # combo box to resample data
@@ -767,14 +927,33 @@ class mainWindow(QTabWidget):
                                    '2H', '12H', '1D', '1W', '2W', '1M'])
         self.cb_resample.setCurrentText('1min')
         self.cb_resample.setFixedHeight(20)
-        self.cb_resample.setFixedWidth(60)
+        self.cb_resample.setFixedWidth(70)
         self.binsize = self.cb_resample.currentText()
 
         self.btn_plot = QPushButton('PLOT', self)
         self.btn_plot.setToolTip('Plot/Re-plot the data')
-        self.btn_plot.setFixedHeight(20)
-        self.btn_plot.setFixedWidth(100)
-        self.btn_plot.clicked.connect(self.plot_my_data)
+        self.btn_plot.setFixedHeight(25)
+        self.btn_plot.setFixedWidth(60)
+        self.btn_plot.clicked.connect(self.start_plot_data_thread)
+
+        self.startdt = QDateTimeEdit(self, calendarPopup=True)
+        # self.startdt.dateTimeChanged.connect(self.update)
+        self.enddt = QDateTimeEdit(self, calendarPopup=True)
+
+        self.btn_sum_rec = QPushButton('Sum')
+        self.btn_sum_rec.setCheckable(True)
+        self.btn_sum_rec.setFixedWidth(50)
+        self.btn_sum_rec.setFixedHeight(25)
+        self.btn_sum_rec.clicked.connect(self.calc_sum)
+
+        self.lbl_sum_lHe_rec= QLabel()
+        self.lbl_sum_lHe_rec.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.lbl_sum_lHe_rec.setText(_translate("TabWidget", "lHe rec: [ltrs] "))
+        self.lbl_sum_lHe_rec.setFixedHeight(20)
+        self.lbl_sum_lHe_rec_rbv = QLabel()
+        self.lbl_sum_lHe_rec_rbv.setFixedHeight(20)
+        self.lbl_sum_lHe_rec_rbv.setFixedWidth(55)
+        self.lbl_sum_lHe_rec_rbv.setStyleSheet("color: lightgreen;background-color: black")
 
         layout2.addWidget(self.lbl_time)
         layout2.addWidget(self.cb_time)
@@ -782,130 +961,149 @@ class mainWindow(QTabWidget):
         layout2.addWidget(self.cb_resample)
         layout2.addWidget(self.btn_plot)
         layout2.addStretch(1)
+        layout1.addWidget(self.startdt)
+        layout1.addWidget(self.enddt)
+        layout1.addWidget(self.btn_sum_rec)
+        layout1.addWidget(self.lbl_sum_lHe_rec)
+        layout1.addWidget(self.lbl_sum_lHe_rec_rbv)
+        layout.addLayout(layout1)
         layout.addLayout(layout2)
         layout.addWidget(toolbar)
         layout.addWidget(self.sc)
         self.tab2.setLayout(layout)
 
-    def plot_my_data(self,):
-        global WORKERS
-        #logger.info("In function: " + inspect.stack()[0][3])
+    def start_plot_data_thread(self,):
+        self.caller_id = 1
         self.btn_plot.setEnabled(False)
-        try:
-            with ThreadPoolExecutor(max_workers=WORKERS) as executor:
-                self.df_bpcCtrl = (executor.submit(self.get_my_data))
-            self.df_bpcCtrl = self.df_bpcCtrl.result()
-            self.redraw()
-        except Exception as e:
-            logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
-            pass
-        self.btn_plot.setEnabled(True)
+        self.btn_sum_rec.setEnabled(False)
+        worker = Worker(datadir, self.cb_time.currentText(), self.caller_id, 0, 0)
+        worker.signals.mysignalfin.connect(self.redraw)
+        self.threadpool.start(worker)
+        # self.p = Process(target=self.plot_my_data, args=())
+        # self.p.start()
 
-    def _read_helper(self, filename,):
-        """
-        helper function for get_data
-        """
-        try:
-            mydata = []
-            headers = ['Date', 'Pressure', 'Flow', 'Valve']
-            mydata.append(read_csv(filename, sep='\t', dtype={0:"str", 1: "float16", 2:"float16", 3:"float16"}, \
-                                          on_bad_lines='skip', na_filter=True, index_col=False, memory_map=True, \
-                                          usecols=[0,1,2,3], engine='c', names=headers, na_values='nan'))
-            return mydata
-        except Exception as e:
-            logger.info("In function: " +  inspect.stack()[0][3] + "In file: ", str(filename) + " Exception: " + str(e))
+    # def plot_my_data(self,):
+    #     global WORKERS
+    #     #logger.info("In function: " + inspect.stack()[0][3])
+    #     try:
+    #         with ThreadPoolExecutor(max_workers=WORKERS) as executor:
+    #             self.df_bpcCtrl = (executor.submit(self.get_my_data))
+    #         self.df_bpcCtrl = self.df_bpcCtrl.result()
+    #         self.redraw()
+    #     except Exception as e:
+    #         logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
+    #         pass
 
-    #@functools.lru_cache(maxsize=128)
-    def get_my_data(self,):
-        mydata = []
-        data   = []
-        get_data_start = perf_counter()
-        try:
-            #print ("In get_my_data")
-            i = 0
-            for filename in scandir(datadir + '\\'):
-                self.filename = filename.name
-                if self.filename != '' and (self.filename.split('.')[-1]).rstrip() == 'txt':
-                    if self.cb_time.currentText() == 'all':
-                        mydata.append(self._read_helper(datadir + sep + filename.name))
+    # def _read_helper(self, filename,):
+    #     """
+    #     helper function for get_data
+    #     """
+    #     try:
+    #         mydata = []
+    #         headers = ['Date', 'Pressure', 'Flow', 'Valve']
+    #         mydata.append(read_csv(filename, sep='\t', dtype={0:"str", 1: "float16", 2:"float16", 3:"float16"}, \
+    #                                on_bad_lines='skip', na_filter=True, index_col=False, memory_map=True, low_memory=True, \
+    #                                usecols=[0,1,2,3], engine='c', names=headers, na_values='nan'))
+    #         return mydata
+    #     except Exception as e:
+    #         logger.info("In function: " +  inspect.stack()[0][3] + "In file: ", str(filename) + " Exception: " + str(e))
 
-                    elif self.cb_time.currentText() == 'last year':
-                        fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
-                        delta_time = (datetime.now() - fname_date).total_seconds()
-                        if (float(delta_time) <= 3.1556952*1e7):
-                            mydata.append(self._read_helper(datadir + sep + filename.name))
-
-                    elif self.cb_time.currentText() == 'last six months':
-                        fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
-                        delta_time = (datetime.now() - fname_date).total_seconds()
-                        if (float(delta_time) <= 1.578*1e7):
-                            mydata.append(self._read_helper(datadir + sep + filename.name))
-                            #print (filename.name, mydata)
-                    elif self.cb_time.currentText() == 'last month':
-                        fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
-                        delta_time = (datetime.now() - fname_date).total_seconds()
-                        if (float(delta_time) <= 2.63*1e6):
-                            mydata.append(self._read_helper(datadir + sep + filename.name))
-                            #print (filename.name, mydata)
-                    elif self.cb_time.currentText() == 'last week':
-                        fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
-                        delta_time = (datetime.now() - fname_date).total_seconds()
-                        if (float(delta_time) <= 604800):
-                            mydata.append(self._read_helper(datadir + sep + filename.name))
-
-                    elif self.cb_time.currentText() == 'last 48 hrs':
-                        fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
-                        delta_time = (datetime.now() - fname_date).total_seconds()
-                        if (float(delta_time) <= 172800):
-                            mydata.append(self._read_helper(datadir + sep + filename.name))
-
-                    else:
-                        mydata.append(self._read_helper(datadir + sep + filename.name))
-        except:
-            logger.info('Error reading file/getting data in filename: ' + str(self.filename) + ' ' + str(inspect.stack()[0][3]))
-            pass
-        if mydata != []:
-            for i in mydata:
-                data.extend(i)
-        else:
-            logger.info("Empty dataset")
-            return
-        self.binsize = self.cb_resample.currentText()
-        dfc = concat(data, ignore_index=True)
-        dfc['Date'] = to_datetime(dfc['Date'])
-        dfc.insert(4, "lHe Rec.", dfc['Flow']*60*24/(1./He_EXP_RATIO))
-        dfc.set_index('Date', inplace=True)
-        # print (dfc.head(5))
-        resample_dfc = dfc.resample(self.binsize, axis=0, closed='left', label='left').mean()
-        resample_dfc.dropna(axis=0, inplace=True)
-        resample_dfc['Date'] = resample_dfc.index
-        get_data_end = perf_counter() - get_data_start
-        logger.info("Time taken to get and analyze data: " +  str(get_data_end))
-        return (resample_dfc)
+    # #@functools.lru_cache(maxsize=128)
+    # def get_my_data(self,):
+    #     mydata = []
+    #     data   = []
+    #     get_data_start = perf_counter()
+    #     try:
+    #         #print ("In get_my_data")
+    #         i = 0
+    #         for filename in scandir(datadir + '\\'):
+    #             self.filename = filename.name
+    #             if self.filename != '' and (self.filename.split('.')[-1]).rstrip() == 'txt':
+    #                 if self.cb_time.currentText() == 'all':
+    #                     mydata.append(self._read_helper(datadir + sep + filename.name))
+    #                 elif self.cb_time.currentText() == '365 days':
+    #                     fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
+    #                     delta_time = (datetime.now() - fname_date).total_seconds()
+    #                     if (float(delta_time) <= 3.1536*1e7):
+    #                         mydata.append(self._read_helper(datadir + sep + filename.name))
+    #                 elif self.cb_time.currentText() == '180 days':
+    #                     fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
+    #                     delta_time = (datetime.now() - fname_date).total_seconds()
+    #                     if (float(delta_time) <= 1.5552*1e7):
+    #                         mydata.append(self._read_helper(datadir + sep + filename.name))
+    #                 elif self.cb_time.currentText() == '90 days':
+    #                     fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
+    #                     delta_time = (datetime.now() - fname_date).total_seconds()
+    #                     if (float(delta_time) <= 7.776*1e7):
+    #                         mydata.append(self._read_helper(datadir + sep + filename.name))
+    #                 elif self.cb_time.currentText() == '30 days':
+    #                     fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
+    #                     delta_time = (datetime.now() - fname_date).total_seconds()
+    #                     if (float(delta_time) <= 2.592*1e6):
+    #                         mydata.append(self._read_helper(datadir + sep + filename.name))
+    #                 elif self.cb_time.currentText() == '7 days':
+    #                     fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
+    #                     delta_time = (datetime.now() - fname_date).total_seconds()
+    #                     if (float(delta_time) <= 604800):
+    #                         mydata.append(self._read_helper(datadir + sep + filename.name))
+    #                 elif self.cb_time.currentText() == '2 days':
+    #                     fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
+    #                     delta_time = (datetime.now() - fname_date).total_seconds()
+    #                     if (float(delta_time) <= 172800):
+    #                         mydata.append(self._read_helper(datadir + sep + filename.name))
+    #                 else:
+    #                     mydata.append(self._read_helper(datadir + sep + filename.name))
+    #     except:
+    #         logger.info('Error reading file/getting data in filename: ' + str(self.filename) + ' ' + str(inspect.stack()[0][3]))
+    #         pass
+    #     if mydata != []:
+    #         for i in mydata:
+    #             data.extend(i)
+    #     else:
+    #         logger.info("Empty dataset")
+    #         return
+    #     self.binsize = self.cb_resample.currentText()
+    #     dfc = concat(data, ignore_index=True)
+    #     dfc['Date'] = to_datetime(dfc['Date'])
+    #     dfc.insert(4, "lHe Rec. [ltrs/day]", dfc['Flow']*60*24/(expansion_ratio))
+    #     dfc.set_index('Date', inplace=True)
+    #     # print (dfc.head(5))
+    #     resample_dfc = dfc.resample(self.binsize, axis=0, closed='left', label='left').mean()
+    #     resample_dfc.dropna(axis=0, inplace=True)
+    #     resample_dfc['Date'] = resample_dfc.index
+    #     get_data_end = perf_counter() - get_data_start
+    #     logger.info("Time taken to get and analyze data: " +  str(get_data_end))
+    #     return (resample_dfc)
 
     def redraw(self,):
+        redraw_start = perf_counter()
+        self.sc.ax1.clear()
         try:
-            redraw_start = perf_counter()
+
             self.plot_history_data()
-            self.sc.flush_events()
-            self.sc.draw_idle()
-            self.sc.fig.tight_layout()
             logger.info('Time taken plot the data and draw canvas: ' + \
                         str(perf_counter() - redraw_start) + '\n')
         except:
             logger.info("Error in function: " + str(inspect.stack()[0][3]))
             pass
+        self.sc.flush_events()
+        self.sc.draw_idle()
+        self.btn_plot.setEnabled(True)
+        self.btn_sum_rec.setEnabled(True)
+        # self.p.join()
+        # self.sc.fig.tight_layout()
 
     def plot_history_data(self, ):
         #logger.info ('In function: ' + inspect.stack()[0][3])
+        global df_bpcCtrl
         try:
             if self.draw_bpc_flag == 1:
-                self.plot1_ref[0].set_data(self.df_bpcCtrl['Date'], self.df_bpcCtrl['lHe Rec.'])
+                self.plot1_ref[0].set_data(df_bpcCtrl['Date'], df_bpcCtrl['lHe Rec. [ltrs/day]'])
             else:
-                self.plot1_ref = self.sc.ax1.plot(self.df_bpcCtrl['Date'], self.df_bpcCtrl['lHe Rec.'], ms=0.2, \
+                self.plot1_ref = self.sc.ax1.plot(df_bpcCtrl['Date'], df_bpcCtrl['lHe Rec. [ltrs/day]'], ms=0.2, \
                                                   c='green', alpha=0.7, marker='o', ls='', label='')
                 # self.sc.ax1.legend(loc = 'upper right', frameon=True)
-            self.draw_bpc_flag = 1
+            self.draw_bpc_flag = 0
 
         except Exception as e:
             logger.info('Error in function: ' + inspect.stack()[0][3] + ' ' + str(e))
@@ -946,7 +1144,7 @@ class mainWindow(QTabWidget):
              self.lbl_pressure_rbv.setText(str(round(all_rbv[20], 3)))
              self.lbl_flow_rbv.setText(str(round(all_rbv[10]*correction, 3)))
              self.lbl_valve_rbv.setText(str(round(all_rbv[-1], 3)))
-             # rec = all_rbv[10]*60*24/(1./He_EXP_RATIO)
+             # rec = all_rbv[10]*60*24/(expansion_ratio)
              # write to epics pv records
              if PV != '':
                  self.drv.write('PRESSURE', all_rbv[20])
@@ -1010,7 +1208,6 @@ class mainWindow(QTabWidget):
             self.drv.updatePVs()
 
     def send_email(self,):
-        # print("sending email...")
         resource = "smtp.nist.gov"
         port = 25
         sender = "alireza.panna@nist.gov"
@@ -1063,7 +1260,6 @@ class mainWindow(QTabWidget):
             #     self.mthread.stop()
             pass
 
-
     def set_plot_history(self):
         global HIST
         global MAIN_THREAD_POLL
@@ -1084,7 +1280,7 @@ class mainWindow(QTabWidget):
             HIST = 2
         elif self.plt_history == '1 w':
             HIST = 2
-        elif self.plt_history == ' 1 m':
+        elif self.plt_history == ' 30 d':
             HIST = 2
         elif self.plt_history == ' 1 y':
             HIST = 2
@@ -1183,7 +1379,7 @@ class mainWindow(QTabWidget):
             ct_list = self._average(array(ct_list), 7*HIST)
             pressure_list = self._average(array(pressure_list), 7*HIST)
             flow_list = self._average(array(flow_list), 7*HIST)
-        if self.plt_history == '1 m':
+        if self.plt_history == '30 d':
             ct_list = self._average(array(ct_list), 30*HIST)
             pressure_list = self._average(array(pressure_list), 30*HIST)
             flow_list = self._average(array(flow_list), 30*HIST)
@@ -1262,6 +1458,50 @@ class mainWindow(QTabWidget):
             self.close()
             QtCore.QCoreApplication.instance().quit
             app.quit()
+
+    def calc_sum(self,):
+         self.btn_sum_rec.setChecked(True)
+         self.btn_sum_rec.setEnabled(False)
+         self.btn_plot.setEnabled(False)
+         self.binsize = '1S'
+         self.caller_id = 2
+         x=self.startdt.dateTime().toPyDateTime().timestamp()
+         y=self.enddt.dateTime().toPyDateTime().timestamp()
+         worker = Worker(datadir, 'None', self.caller_id, x, y)
+         worker.signals.mysignalfin.connect(self.show_sum)
+         self.threadpool.start(worker)
+
+    def show_sum(self,):
+         """
+         Returns
+         -------
+         None.
+         """
+         global df_bpcCtrl
+         new_df = None
+         try:
+             # print(df_bpcCtrl)
+              x=self.startdt.dateTime().toPyDateTime().timestamp()
+              y=self.enddt.dateTime().toPyDateTime().timestamp()
+              # print (x, y)
+              print(df_bpcCtrl['Timestamp'])
+              new_df = df_bpcCtrl[(df_bpcCtrl['Timestamp'] >= int(x)) & (df_bpcCtrl['Timestamp'] <= int(y))]
+              print (new_df['lHe Rec. [ltrs/sec]'])
+              new_df.astype({'lHe Rec. [ltrs/sec]': 'float64'}).dtypes
+             # print(new_df_tempCtrl.describe())
+              if not new_df.empty:
+                 # print(df_bpcCtrl['lHe Rec. [ltrs/sec]'])
+                 mysum = round(asarray(new_df['lHe Rec. [ltrs/sec]'], dtype=float64).sum(), 3)
+                 self.lbl_sum_lHe_rec_rbv.setText(str(mysum))
+              else:
+                self.lbl_sum_lHe_rec_rbv.setText(0)
+         except Exception as e:
+             self.lbl_sum_lHe_rec_rbv.setText('NaN')
+             logger.info('Error in function: ' + inspect.stack()[0][3] + ' ' + str(e))
+             pass
+         self.btn_sum_rec.setChecked(False)
+         self.btn_sum_rec.setEnabled(True)
+         self.btn_plot.setEnabled(True)
 #################################################################################################
 def _sigint_handler(*args):
     """
@@ -1271,7 +1511,7 @@ def _sigint_handler(*args):
     if PV != '':
         server_thread.stop()
     QtGui.QApplication.quit()
-    
+
 def isDigit(x):
     try:
         float(x)
@@ -1286,14 +1526,14 @@ def dir_path(save_path):
     return save_path
 
 def range_limited_float_type(arg):
-    """ 
+    """
     Type function for argparse - a float within some predefined bounds
     """
     MIN_VAL = 1
     MAX_VAL = 2
     try:
         f = float(arg)
-    except ValueError:    
+    except ValueError:
         raise ArgumentTypeError("Must be a floating point number")
     if f < MIN_VAL or f > MAX_VAL:
         raise ArgumentTypeError("Argument must be <= " + str(MAX_VAL) + " and >= " + str(MIN_VAL))
@@ -1314,7 +1554,7 @@ if __name__ == '__main__':
     parser.add_argument('-dl', '--debug_log', help='Save all debugging logs', action='store_true')
     parser.add_argument('-t', '--threshold',  help='Specify lHe threshold in ltrs', default='', type=str)
     parser.add_argument('-c', '--correction',  help='Specify correction factor between 1.0 and 2.0', default='1.0', type=range_limited_float_type)
-
+    parser.add_argument('-rv','--expansion_ratio', help='Specify the helium gas to liquid expansion ratio', default=754.2, type=float)
     args, unk = parser.parse_known_args()
     if unk:
         logger.info("Warning: Ignoring unknown arguments: {:}".format(unk))
@@ -1329,23 +1569,25 @@ if __name__ == '__main__':
     threshold = args.threshold
     correction = args.correction
     debug_log_flag = args.debug_log
-    
+    expansion_ratio = args.expansion_ratio
+
     if correction == '':
         correction = 1.0
     if threshold != '':
         THRESHOLD_LHE = threshold
     else:
         THRESHOLD_LHE = ''
-    print('Server: ', myserver, 
-          'Port: ', port,
-          'PV: ', PV, 
-          'Datadir: ', datadir,
-          'Logdir: ', logdir,
-          'Receiver: ', receiver,
-          'Debug mode: ', debug_mode,
-          'Threshold: ', THRESHOLD_LHE,
-          'Correction: ', correction, 
-          'Debug log: ', debug_log_flag)
+    # print('Server: ', myserver,
+    #       'Port: ', port,
+    #       'PV: ', PV,
+    #       'Datadir: ', datadir,
+    #       'Logdir: ', logdir,
+    #       'Receiver: ', receiver,
+    #       'Debug mode: ', debug_mode,
+    #       'Threshold: ', THRESHOLD_LHE,
+    #       'Correction: ', correction,
+    #       'Debug log: ', debug_log_flag,
+    #       'He Expansion Ratio: ', expansion_ratio)
     # define the file handler and formatting
     lfname = logdir + sep + 'bpc-monitor' + '.log'
     file_handler = TimedRotatingFileHandler(lfname, when='midnight')
@@ -1362,7 +1604,8 @@ if __name__ == '__main__':
                 ', Debug mode: ' + str(debug_mode) + \
                 ', Save debug log: ' + str(debug_log_flag) + \
                 ', Threshold: ' + str(THRESHOLD_LHE) + \
-                ', Correction Factor: ' + str(correction))
+                ', Correction Factor: ' + str(correction) + \
+                ', Helium Expansion Ratio: ' + str(expansion_ratio))
     # logger.info("In function: " +  inspect.stack()[0][3] + "EPICS PV for this server: " + str(PV))
     # Handle high resolution displays:
     if hasattr(QtCore.Qt, 'AA_EnableHighDpiScaling'):
@@ -1391,6 +1634,7 @@ if __name__ == '__main__':
         main_window.setWindowTitle("BPC Monitor " + __version__ + ' Debug mode')
     else:
         main_window.setWindowTitle("BPC Monitor " + __version__)
+    main_window.setWindowIcon(QIcon(base_dir + r'\icons\main.jpg'))
     main_window.show()
     # handle ctrl+c event
     signal.signal(signal.SIGINT, _sigint_handler)

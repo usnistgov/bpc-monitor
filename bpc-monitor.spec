@@ -13,7 +13,7 @@ a = Analysis(
     ['bpc-monitor.py'],
     pathex=[''],
     binaries=[],
-    datas=[('.\Vision130.py', '.'), ('.\\ui\\main.ui', '.\\ui\\')],
+    datas=[('.\Vision130.py', '.'), ('.\\ui\\main.ui', '.\\ui\\'), ('.\\icons', 'icons')],
     hiddenimports = ['pyi_splash'],
     #hiddenimports=['pyi_splash','pyqtgraph.graphicsItems.ViewBox.axisCtrlTemplate_pyqt6', 'pyqtgraph.graphicsItems.PlotItem.plotConfigTemplate_pyqt6', 'pyqtgraph.imageview.ImageViewTemplate_pyqt6'],
     hookspath=[f'{PACKAGE_SITE}/pyupdater/hooks'],

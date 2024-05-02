@@ -1,5 +1,14 @@
 # RELEASE
 
+## 05/02/2024   Version 2.4
+   * Fix facecolor of figure for lHe rec. history plot
+   * Optimize pandas read_csv by adding low_memory option
+   * Fix history plot issue and change history combo box options
+   * Add icon to title bar
+   * Performance improvements for plotting history
+   * Add feature to sum total lHe recovered in ltrs when user selects start and end dates
+   * 
+
 ## 04/28/2024   Version 2.3  
    * Added splash screen support
    * Added command line option -dl to log the lHe remaining in ltrs in the log file
