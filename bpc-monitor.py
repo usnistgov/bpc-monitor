@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # Note: For the CCC dewars: 1 inch of lHe is 1 Ltr of lHe
-import sys
+import sys, functools
 from os import environ, chdir, sep, path, mkdir, getcwd, scandir
 from argparse import ArgumentParser, ArgumentTypeError
 
@@ -42,7 +42,7 @@ import matplotlib
 from matplotlib.dates import ConciseDateFormatter, AutoDateLocator
 import matplotlib.style as mplstyle
 import matplotlib.pyplot as plt
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from pandas import read_csv, concat, to_datetime, set_option
 
@@ -86,7 +86,7 @@ logger.setLevel(logging.INFO)
 # num_processes = kernel32.GetConsoleProcessList(process_array, 1)
 # if num_processes < 3: ctypes.WinDLL('user32').ShowWindow(kernel32.GetConsoleWindow(), 0)
 # python globals
-__version__ = '2.4' # Program version string
+__version__ = '2.4.2' # Program version string
 MAIN_THREAD_POLL = 1000 # in ms (1 s)
 # EMAIL_POLL = 300000 # for testing
 EMAIL_POLL = 1.44e7 # in ms (4 hours)
@@ -366,7 +366,7 @@ class Worker(QRunnable):
         except Exception as e:
             logger.info("In function: " +  inspect.stack()[0][3] + "In file: ", str(filename) + " Exception: " + str(e))
 
-    # @functools.lru_cache(maxsize=128)
+    @functools.lru_cache(maxsize=128)
     def get_data(self,):
         mydata = []
         data   = []
@@ -392,12 +392,17 @@ class Worker(QRunnable):
                         elif self.duration == '90 days':
                             fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
                             delta_time = (datetime.now() - fname_date).total_seconds()
-                            if (float(delta_time) <= 7.776*1e7):
+                            if (float(delta_time) <= 7.776*1e6):
                                 mydata.append(self._read_helper(datadir + sep + filename.name))
                         elif self.duration == '30 days':
                             fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
                             delta_time = (datetime.now() - fname_date).total_seconds()
                             if (float(delta_time) <= 2.592*1e6):
+                                mydata.append(self._read_helper(datadir + sep + filename.name))
+                        elif self.duration == '14 days':
+                            fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
+                            delta_time = (datetime.now() - fname_date).total_seconds()
+                            if (float(delta_time) <= 1.2096*1e6):
                                 mydata.append(self._read_helper(datadir + sep + filename.name))
                         elif self.duration == '7 days':
                             fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
@@ -484,6 +489,8 @@ class Worker(QRunnable):
                 # dfm_list = dfm.values.tolist()
         except Exception as e:
             logger.info ("Error in function " + inspect.stack()[0][3] + ': ' + str(e))
+            main_window.btn_plot.setEnabled(True)
+            main_window.btn_sum_rec.setEnabled(True)
             pass
 
 class aboutWindow(QWidget):
@@ -598,7 +605,7 @@ class mainWindow(QTabWidget):
         self.about_action.triggered.connect(self._about)
 
         self.cb_plt_hist.addItems(['1 min', '5 min', '1 hr', '2 hr', '12 hr', \
-                                   '1 d', '2 d', '1 w', '30 d', '1 y'])
+                                   '1 d', '2 d', '7 d', '30 d', '1 y'])
         self.cb_plt_hist.setCurrentText('1 hr')
         self.cb_plt_hist.activated.connect(self.set_plot_history)
         self.plt_history = self.cb_plt_hist.currentText()
@@ -912,10 +919,10 @@ class mainWindow(QTabWidget):
         _translate = QtCore.QCoreApplication.translate
         self.lbl_time = QLabel('HISTORY: ')
         self.cb_time = QComboBox()
-        self.cb_time.addItems(['2 days', '7 days', \
+        self.cb_time.addItems(['2 days', '7 days', '14 days',  \
                                '30 days', '90 days', '180 days', '365 days', \
                                'all'])
-        self.cb_time.setCurrentText('last 48 hrs')
+        self.cb_time.setCurrentText('2 days')
         self.cb_time.setFixedWidth(70)
         self.cb_time.setFixedHeight(20)
 
@@ -979,107 +986,11 @@ class mainWindow(QTabWidget):
         worker = Worker(datadir, self.cb_time.currentText(), self.caller_id, 0, 0)
         worker.signals.mysignalfin.connect(self.redraw)
         self.threadpool.start(worker)
-        # self.p = Process(target=self.plot_my_data, args=())
-        # self.p.start()
-
-    # def plot_my_data(self,):
-    #     global WORKERS
-    #     #logger.info("In function: " + inspect.stack()[0][3])
-    #     try:
-    #         with ThreadPoolExecutor(max_workers=WORKERS) as executor:
-    #             self.df_bpcCtrl = (executor.submit(self.get_my_data))
-    #         self.df_bpcCtrl = self.df_bpcCtrl.result()
-    #         self.redraw()
-    #     except Exception as e:
-    #         logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
-    #         pass
-
-    # def _read_helper(self, filename,):
-    #     """
-    #     helper function for get_data
-    #     """
-    #     try:
-    #         mydata = []
-    #         headers = ['Date', 'Pressure', 'Flow', 'Valve']
-    #         mydata.append(read_csv(filename, sep='\t', dtype={0:"str", 1: "float16", 2:"float16", 3:"float16"}, \
-    #                                on_bad_lines='skip', na_filter=True, index_col=False, memory_map=True, low_memory=True, \
-    #                                usecols=[0,1,2,3], engine='c', names=headers, na_values='nan'))
-    #         return mydata
-    #     except Exception as e:
-    #         logger.info("In function: " +  inspect.stack()[0][3] + "In file: ", str(filename) + " Exception: " + str(e))
-
-    # #@functools.lru_cache(maxsize=128)
-    # def get_my_data(self,):
-    #     mydata = []
-    #     data   = []
-    #     get_data_start = perf_counter()
-    #     try:
-    #         #print ("In get_my_data")
-    #         i = 0
-    #         for filename in scandir(datadir + '\\'):
-    #             self.filename = filename.name
-    #             if self.filename != '' and (self.filename.split('.')[-1]).rstrip() == 'txt':
-    #                 if self.cb_time.currentText() == 'all':
-    #                     mydata.append(self._read_helper(datadir + sep + filename.name))
-    #                 elif self.cb_time.currentText() == '365 days':
-    #                     fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
-    #                     delta_time = (datetime.now() - fname_date).total_seconds()
-    #                     if (float(delta_time) <= 3.1536*1e7):
-    #                         mydata.append(self._read_helper(datadir + sep + filename.name))
-    #                 elif self.cb_time.currentText() == '180 days':
-    #                     fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
-    #                     delta_time = (datetime.now() - fname_date).total_seconds()
-    #                     if (float(delta_time) <= 1.5552*1e7):
-    #                         mydata.append(self._read_helper(datadir + sep + filename.name))
-    #                 elif self.cb_time.currentText() == '90 days':
-    #                     fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
-    #                     delta_time = (datetime.now() - fname_date).total_seconds()
-    #                     if (float(delta_time) <= 7.776*1e7):
-    #                         mydata.append(self._read_helper(datadir + sep + filename.name))
-    #                 elif self.cb_time.currentText() == '30 days':
-    #                     fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
-    #                     delta_time = (datetime.now() - fname_date).total_seconds()
-    #                     if (float(delta_time) <= 2.592*1e6):
-    #                         mydata.append(self._read_helper(datadir + sep + filename.name))
-    #                 elif self.cb_time.currentText() == '7 days':
-    #                     fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
-    #                     delta_time = (datetime.now() - fname_date).total_seconds()
-    #                     if (float(delta_time) <= 604800):
-    #                         mydata.append(self._read_helper(datadir + sep + filename.name))
-    #                 elif self.cb_time.currentText() == '2 days':
-    #                     fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
-    #                     delta_time = (datetime.now() - fname_date).total_seconds()
-    #                     if (float(delta_time) <= 172800):
-    #                         mydata.append(self._read_helper(datadir + sep + filename.name))
-    #                 else:
-    #                     mydata.append(self._read_helper(datadir + sep + filename.name))
-    #     except:
-    #         logger.info('Error reading file/getting data in filename: ' + str(self.filename) + ' ' + str(inspect.stack()[0][3]))
-    #         pass
-    #     if mydata != []:
-    #         for i in mydata:
-    #             data.extend(i)
-    #     else:
-    #         logger.info("Empty dataset")
-    #         return
-    #     self.binsize = self.cb_resample.currentText()
-    #     dfc = concat(data, ignore_index=True)
-    #     dfc['Date'] = to_datetime(dfc['Date'])
-    #     dfc.insert(4, "lHe Rec. [ltrs/day]", dfc['Flow']*60*24/(expansion_ratio))
-    #     dfc.set_index('Date', inplace=True)
-    #     # print (dfc.head(5))
-    #     resample_dfc = dfc.resample(self.binsize, axis=0, closed='left', label='left').mean()
-    #     resample_dfc.dropna(axis=0, inplace=True)
-    #     resample_dfc['Date'] = resample_dfc.index
-    #     get_data_end = perf_counter() - get_data_start
-    #     logger.info("Time taken to get and analyze data: " +  str(get_data_end))
-    #     return (resample_dfc)
 
     def redraw(self,):
         redraw_start = perf_counter()
         self.sc.ax1.clear()
         try:
-
             self.plot_history_data()
             logger.info('Time taken plot the data and draw canvas: ' + \
                         str(perf_counter() - redraw_start) + '\n')
@@ -1249,15 +1160,8 @@ class mainWindow(QTabWidget):
             self.le_uptime.setText(str(days) + 'd, ' + str(hours) + \
                                   ':' + str(mins) + ':' + str(secs))
             self.fname = datadir + '\\bpc_log_' + strftime("%Y%m%d") + '.txt'
-            # if not self.mthread.isRunning():
-            #     self.actual_time_taken = perf_counter() - self.timer_start
-            #     self.timer_start = perf_counter()
-            #     #logger.info("In function: " + inspect.stack()[0][3])
-            #     self.mthread.start()
         except Exception as e:
             logger.info("In function: " +  inspect.stack()[0][3] + " Exception: " + str(e))
-            # if self.mthread.isRunning():
-            #     self.mthread.stop()
             pass
 
     def set_plot_history(self):
@@ -1278,7 +1182,7 @@ class mainWindow(QTabWidget):
             HIST = 2
         elif self.plt_history == '2 d':
             HIST = 2
-        elif self.plt_history == '1 w':
+        elif self.plt_history == '7 d':
             HIST = 2
         elif self.plt_history == ' 30 d':
             HIST = 2
@@ -1375,7 +1279,7 @@ class mainWindow(QTabWidget):
             ct_list = self._average(array(ct_list), 2*HIST)
             pressure_list = self._average(array(pressure_list), 2*HIST)
             flow_list = self._average(array(flow_list), 2*HIST)
-        if self.plt_history == '1 w':
+        if self.plt_history == '7 d':
             ct_list = self._average(array(ct_list), 7*HIST)
             pressure_list = self._average(array(pressure_list), 7*HIST)
             flow_list = self._average(array(flow_list), 7*HIST)
@@ -1387,9 +1291,6 @@ class mainWindow(QTabWidget):
             ct_list = self._average(array(ct_list), 365*HIST)
             pressure_list = self._average(array(pressure_list), 365*HIST)
             flow_list = self._average(array(flow_list), 365*HIST)
-        # count_list = range(len(pressure_list))
-        # count_list_2 = range(len(flow_list))
-        # print ('after: ', len(pressure_list))
         try:
             self.curve1.setData(x=ct_list, y=pressure_list, pen = 'r', shadowPen = 'r', symbol='o', symbolSize=1.5, symbolBrush='r', connect='finite')
             self.curve2.setData(x=ct_list, y=flow_list, pen=(138,43,226), shadowPen =(138,43,226), symbol='x', symbolSize=1.5, symbolBrush= (138,43,226), connect='finite')
@@ -1484,9 +1385,9 @@ class mainWindow(QTabWidget):
               x=self.startdt.dateTime().toPyDateTime().timestamp()
               y=self.enddt.dateTime().toPyDateTime().timestamp()
               # print (x, y)
-              print(df_bpcCtrl['Timestamp'])
+              # print(df_bpcCtrl['Timestamp'])
               new_df = df_bpcCtrl[(df_bpcCtrl['Timestamp'] >= int(x)) & (df_bpcCtrl['Timestamp'] <= int(y))]
-              print (new_df['lHe Rec. [ltrs/sec]'])
+              # print (new_df['lHe Rec. [ltrs/sec]'])
               new_df.astype({'lHe Rec. [ltrs/sec]': 'float64'}).dtypes
              # print(new_df_tempCtrl.describe())
               if not new_df.empty:
@@ -1549,12 +1450,12 @@ if __name__ == '__main__':
     parser.add_argument('-e', '--epics_pv',  help='Specify the PV epics prefix', default='')
     parser.add_argument('-s', '--save_path', help='Specify data directory', default="C:" + sep + "_datacache_", type=dir_path)
     parser.add_argument('-l', '--log_path', help='Specify log directory', default="C:" + sep + "_logcache_", type=dir_path)
-    parser.add_argument('-m', '--mail', help='Specify receipients email address', default='')
     parser.add_argument('-d', '--debug', help='Debugging mode', action='store_true')
     parser.add_argument('-dl', '--debug_log', help='Save all debugging logs', action='store_true')
     parser.add_argument('-t', '--threshold',  help='Specify lHe threshold in ltrs', default='', type=str)
     parser.add_argument('-c', '--correction',  help='Specify correction factor between 1.0 and 2.0', default='1.0', type=range_limited_float_type)
     parser.add_argument('-rv','--expansion_ratio', help='Specify the helium gas to liquid expansion ratio', default=754.2, type=float)
+    parser.add_argument('-m', '--mail', help='Specify receipients email address', default='')
     args, unk = parser.parse_known_args()
     if unk:
         logger.info("Warning: Ignoring unknown arguments: {:}".format(unk))
@@ -1564,12 +1465,12 @@ if __name__ == '__main__':
     PV = args.epics_pv
     datadir = args.save_path
     logdir = args.log_path
-    receiver = args.mail.split(';')
     debug_mode = args.debug
     threshold = args.threshold
     correction = args.correction
     debug_log_flag = args.debug_log
     expansion_ratio = args.expansion_ratio
+    receiver = args.mail.split(';')
 
     if correction == '':
         correction = 1.0
@@ -1603,7 +1504,7 @@ if __name__ == '__main__':
                 ', Receiver: ' + str(receiver) + \
                 ', Debug mode: ' + str(debug_mode) + \
                 ', Save debug log: ' + str(debug_log_flag) + \
-                ', Threshold: ' + str(THRESHOLD_LHE) + \
+                ', Threshold: ' + THRESHOLD_LHE + \
                 ', Correction Factor: ' + str(correction) + \
                 ', Helium Expansion Ratio: ' + str(expansion_ratio))
     # logger.info("In function: " +  inspect.stack()[0][3] + "EPICS PV for this server: " + str(PV))
