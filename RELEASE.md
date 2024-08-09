@@ -1,5 +1,11 @@
 # RELEASE
 
+## 08/08/2024   Version 2.4.3
+   * Add reload button in history tab and set shortcut Ctrl+r for reloading/refreshing the plot
+   * Update external dependencies
+   * Set shortcut Ctrl+q to quit the program
+   * Add status bar to history tab
+
 ## 05/03/2024   Version 2.4.2
    * Add 14 days to history plot
    * General clean up

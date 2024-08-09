@@ -8,7 +8,7 @@ __maintainer__ 	=       "Alireza Panna"
 __email__ 	    =       "alireza.panna@nist.gov"
 __status__ 	    =       "Stable"
 __date__        =       "03/25/2023"
-__version__     =       "2.4.2"
+__version__     =       "2.4.3"
 
 TODO            =
 CHANGELOG       =       """
@@ -61,4 +61,6 @@ CHANGELOG       =       """
                         050124: FIX: Facecolor of figure for history plot, fix issue with plotting history data
                         050224: ADD: performance improvements for history plotting, add icon to title bar, add sum feature to get total lHe recovered, update to 2.4
                         072924: MNT: Add 14 days to history plot, clean up, update to 2.4.2
+                        080824: ENH: Add reload button in history tab and set shortcut Ctrl+r for reloading/refreshing the plot
+                                     Update external dependencies, set shortcut Ctrl+q to quit the program, Add status bar in history tab
                         """

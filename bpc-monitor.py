@@ -8,23 +8,23 @@ try:
     environ["QT_API"] = "pyqt6"
     from PyQt6 import QtCore, QtGui
     from PyQt6.QtCore import pyqtSignal, QTimer, QThread, QSettings, QObject, QRect, QRunnable, pyqtSlot, QThreadPool
-    from PyQt6.QtGui import QAction, QFont, QDoubleValidator, QIcon
+    from PyQt6.QtGui import QAction, QFont, QDoubleValidator, QIcon, QKeySequence
     from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,\
                                 QLabel, QPushButton, QComboBox,QMessageBox, \
                                 QSystemTrayIcon, QStyle, QTabWidget, \
                                 QLineEdit, QFrame, QSizePolicy, QMenuBar, QMenu, QTextEdit, \
-                                QDateTimeEdit)
+                                QDateTimeEdit, QStatusBar)
     pixmapi = QStyle.StandardPixmap.SP_TitleBarMenuButton
 except ImportError:
     environ["QT_API"] = "pyqt5"
     from PyQt5 import QtCore, QtGui
-    from PyQt5.QtGui import QFont, QDoubleValidator, QIcon
+    from PyQt5.QtGui import QFont, QDoubleValidator, QIcon, QKeySequence
     from PyQt5.QtCore import pyqtSignal, QTimer, QThread, QSettings, QObject, QRect, QRunnable, pyqtSlot, QThreadPool
     from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,\
                                 QLabel, QPushButton, QComboBox, QMessageBox, \
                                 QSystemTrayIcon, QStyle, QAction, QTabWidget,
                                 QLineEdit, QFrame, QSizePolicy, QMenuBar, QMenu, QTextEdit, \
-                                QDateTimeEdit)
+                                QDateTimeEdit, QStatusBar)
     pixmapi = QStyle.SP_TitleBarMenuButton
 
 import pyqtgraph as pg
@@ -42,7 +42,7 @@ import matplotlib
 from matplotlib.dates import ConciseDateFormatter, AutoDateLocator
 import matplotlib.style as mplstyle
 import matplotlib.pyplot as plt
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 
 from pandas import read_csv, concat, to_datetime, set_option
 
@@ -79,20 +79,19 @@ else:
 logger = logging.getLogger(__name__)
 # set the log level
 logger.setLevel(logging.INFO)
-
 # import ctypes
 # kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
 # process_array = (ctypes.c_uint8 * 1)()
 # num_processes = kernel32.GetConsoleProcessList(process_array, 1)
 # if num_processes < 3: ctypes.WinDLL('user32').ShowWindow(kernel32.GetConsoleWindow(), 0)
 # python globals
-__version__ = '2.4.2' # Program version string
+__version__ = '2.4.3' # Program version string
 MAIN_THREAD_POLL = 1000 # in ms (1 s)
 # EMAIL_POLL = 300000 # for testing
 EMAIL_POLL = 1.44e7 # in ms (4 hours)
 #He_EXP_RATIO = 1./754.2 # liquid to gas expansion ratio for Helium at 1 atm and 70 F
-WIDTH = 470
-HEIGHT= 450
+WIDTH = 480
+HEIGHT= 460
 HIST = 24
 WORKERS = 8
 START_LHE = ''
@@ -362,10 +361,10 @@ class Worker(QRunnable):
             mydata.append(read_csv(filename, sep='\t', dtype={0:"str", 1: "float16", 2:"float16", 3:"float16"}, \
                                    on_bad_lines='skip', na_filter=True, index_col=False, memory_map=True, low_memory=True, \
                                    usecols=[0,1,2,3], engine='c', names=self.headers, na_values='nan'))
-            return mydata
         except Exception as e:
-            logger.info("In function: " +  inspect.stack()[0][3] + "In file: ", str(filename) + " Exception: " + str(e))
-
+            logger.info("In function: " +  inspect.stack()[0][3] + " In file: ", str(filename) + " Exception: " + str(e))
+            pass
+        return mydata
     @functools.lru_cache(maxsize=128)
     def get_data(self,):
         mydata = []
@@ -378,6 +377,7 @@ class Worker(QRunnable):
                 if self.filename != '' and (self.filename.split('.')[-1]).rstrip() == 'txt':
                     if self.caller == 1: # plot data
                         if self.duration == 'all':
+                            # print ("appending all data...")
                             mydata.append(self._read_helper(datadir + sep + filename.name))
                         elif self.duration == '365 days':
                             fname_date = datetime.strptime((((filename.name.split('.')[0])).split('_')[-1]), "%Y%m%d")
@@ -435,13 +435,13 @@ class Worker(QRunnable):
             pass
         if data != []:
             dfc = concat(data, ignore_index=True)
-            dfc['Date'] = to_datetime(dfc['Date'], utc=False)
+            dfc['Date'] = to_datetime(dfc['Date'], utc=False, format="ISO8601")
             dfc.insert(4, "lHe Rec. [ltrs/day]", dfc['Flow']*60*24/(expansion_ratio))
             dfc.insert(5, "lHe Rec. [ltrs/sec]", (dfc['Flow']/60)/(expansion_ratio))
             dfc.insert(6, "Timestamp", dfc.Date.values.astype(int64)//10**9)
             dfc.set_index('Date', inplace=True)
             # print (dfc.head(5))
-            resample_dfc = dfc.resample(self.binsize, axis=0, closed='left', label='left').mean()
+            resample_dfc = dfc.resample(self.binsize, closed='left', label='left').mean()
             resample_dfc.dropna(axis=0, inplace=True)
             resample_dfc['Date'] = resample_dfc.index
             get_data_end = perf_counter() - get_data_start
@@ -462,14 +462,18 @@ class Worker(QRunnable):
             self.binsize = '1S'
         else:
             self.binsize = main_window.cb_resample.currentText()
-        with ThreadPoolExecutor(max_workers=WORKERS) as executor:
-            y1 = (executor.submit(self.get_data))
-        # print("This is result", y1.result())
-        if y1.result() is not None:
-            dfb = y1.result()
-            return (dfb)
-        else:
-            return
+        try:
+            with ThreadPoolExecutor(max_workers=WORKERS) as executor:
+                y1 = (executor.submit(self.get_data))
+            # print("This is result", y1.result())
+            if y1.result() is not None:
+                dfb = y1.result()
+                return (dfb)
+            else:
+                return
+        except Exception as e:
+            logger.info ("Error in function " + inspect.stack()[0][3] + ': ' + str(e))
+            pass
 
     @pyqtSlot()
     def run(self):
@@ -513,6 +517,38 @@ class aboutWindow(QWidget):
         layout = QVBoxLayout()
         layout.addWidget(self.te_about)
         self.setLayout(layout)
+
+class CustomToolbar(NavigationToolbar):
+    def __init__(self, canvas, parent=None):
+        super(CustomToolbar, self).__init__(canvas, parent)
+        global WIDTH
+        self.setFixedWidth(WIDTH-20)
+        self.btn_reload = QPushButton(self)
+        self.btn_reload.clicked.connect(self._on_reload)
+        self.btn_reload.setShortcut(QKeySequence("Ctrl+r"))
+        self.btn_reload.setGeometry(QtCore.QRect(100, 330, 75, 31))
+        self.btn_reload.setStyleSheet("QPushButton::hover"
+                                      "{"
+                                      "color : blue;"
+                                      "}; border: 0px;")
+        self.btn_reload.setIcon(QIcon(base_dir + r'\icons\refresh.ico'))
+        self.btn_reload.setFixedHeight(40)
+        self.btn_reload.setFixedWidth(40)
+        # self.insertWidget(1, self.btn_refresh)
+        self.addWidget(self.btn_reload)
+
+    def _on_reload(self,):
+        fig = self.canvas.figure
+        # n_plots = len(fig.get_axes())
+        # print(n_plots)
+        for ax in fig.get_axes():
+            ax.set_autoscale_on(True)
+            ax.relim()
+            ax.autoscale(tight=None, axis='both', enable=True)
+            ax.autoscale_view(tight=None, scalex=True, scaley=True)
+        fig.canvas.flush_events()
+        fig.canvas.draw_idle()
+        return
 
 class mainWindow(QTabWidget):
 
@@ -560,6 +596,7 @@ class mainWindow(QTabWidget):
         self.timestamp = datetime.now()
         self.settings = QSettings("global_settings.ini", QSettings.Format.IniFormat)
         self.caller_id = 0
+        self.start_work = 0
         # self.setupUi(self)
         self.plot_settings()
         self.data_pressure = deque(maxlen=int(86400/(HIST*MAIN_THREAD_POLL*1e-3)))
@@ -597,7 +634,7 @@ class mainWindow(QTabWidget):
 
         self.close_action = QAction("&Quit", self)
         self.close_action.setStatusTip("Quit this program")
-        self.close_action.setShortcut("Ctrl + Q")
+        self.close_action.setShortcut(QKeySequence("Ctrl+q"))
         self.close_action.triggered.connect(self.quit)
 
         self.about_action = QAction("&About", self)
@@ -915,7 +952,11 @@ class mainWindow(QTabWidget):
         layout = QVBoxLayout()
         layout1 = QHBoxLayout()
         layout2 = QHBoxLayout()
-        toolbar = NavigationToolbar(self.sc, self)
+        # toolbar = NavigationToolbar(self.sc, self)
+        self.ct = CustomToolbar(self.sc, self)
+        self.statusbar = QStatusBar(parent=self.tab2)
+        # self.setStatusBar(self.statusbar)
+        self.statusbar.showMessage("Ready", 5000)
         _translate = QtCore.QCoreApplication.translate
         self.lbl_time = QLabel('HISTORY: ')
         self.cb_time = QComboBox()
@@ -975,11 +1016,13 @@ class mainWindow(QTabWidget):
         layout1.addWidget(self.lbl_sum_lHe_rec_rbv)
         layout.addLayout(layout1)
         layout.addLayout(layout2)
-        layout.addWidget(toolbar)
+        layout.addWidget(self.statusbar)
+        layout.addWidget(self.ct)
         layout.addWidget(self.sc)
         self.tab2.setLayout(layout)
 
     def start_plot_data_thread(self,):
+        self.start_work = perf_counter()
         self.caller_id = 1
         self.btn_plot.setEnabled(False)
         self.btn_sum_rec.setEnabled(False)
@@ -1001,6 +1044,8 @@ class mainWindow(QTabWidget):
         self.sc.draw_idle()
         self.btn_plot.setEnabled(True)
         self.btn_sum_rec.setEnabled(True)
+        self.finish_work = perf_counter()
+        self.statusbar.showMessage("Time taken to serve data " + str(round(self.finish_work - self.start_work, 2)) + ' s', 10000)
         # self.p.join()
         # self.sc.fig.tight_layout()
 
