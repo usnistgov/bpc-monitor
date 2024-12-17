@@ -365,6 +365,7 @@ class Worker(QRunnable):
             logger.info("In function: " +  inspect.stack()[0][3] + " In file: ", str(filename) + " Exception: " + str(e))
             pass
         return mydata
+
     @functools.lru_cache(maxsize=128)
     def get_data(self,):
         mydata = []
