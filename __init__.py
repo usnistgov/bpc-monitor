@@ -63,4 +63,5 @@ CHANGELOG       =       """
                         072924: MNT: Add 14 days to history plot, clean up, update to 2.4.2
                         080824: ENH: Add reload button in history tab and set shortcut Ctrl+r for reloading/refreshing the plot,
                                      Update external dependencies, set shortcut Ctrl+q to quit the program, Add status bar in history tab
+                        070325: ENH: System tray icon updated to easily distinguish the bpc-monitor in system tray, update to preserve stylsheet on windows 11
                         """

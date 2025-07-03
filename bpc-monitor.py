@@ -7,7 +7,7 @@ from argparse import ArgumentParser, ArgumentTypeError
 try:
     environ["QT_API"] = "pyqt6"
     from PyQt6 import QtCore, QtGui
-    from PyQt6.QtCore import pyqtSignal, QTimer, QThread, QSettings, QObject, QRect, QRunnable, pyqtSlot, QThreadPool
+    from PyQt6.QtCore import pyqtSignal, QTimer, QThread, QObject, QRect, QRunnable, pyqtSlot, QThreadPool
     from PyQt6.QtGui import QAction, QFont, QDoubleValidator, QIcon, QKeySequence
     from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,\
                                 QLabel, QPushButton, QComboBox,QMessageBox, \
@@ -19,7 +19,7 @@ except ImportError:
     environ["QT_API"] = "pyqt5"
     from PyQt5 import QtCore, QtGui
     from PyQt5.QtGui import QFont, QDoubleValidator, QIcon, QKeySequence
-    from PyQt5.QtCore import pyqtSignal, QTimer, QThread, QSettings, QObject, QRect, QRunnable, pyqtSlot, QThreadPool
+    from PyQt5.QtCore import pyqtSignal, QTimer, QThread, QObject, QRect, QRunnable, pyqtSlot, QThreadPool
     from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,\
                                 QLabel, QPushButton, QComboBox, QMessageBox, \
                                 QSystemTrayIcon, QStyle, QAction, QTabWidget,
@@ -85,7 +85,7 @@ logger.setLevel(logging.INFO)
 # num_processes = kernel32.GetConsoleProcessList(process_array, 1)
 # if num_processes < 3: ctypes.WinDLL('user32').ShowWindow(kernel32.GetConsoleWindow(), 0)
 # python globals
-__version__ = '2.4.3' # Program version string
+__version__ = '2.4.4' # Program version string
 MAIN_THREAD_POLL = 1000 # in ms (1 s)
 # EMAIL_POLL = 300000 # for testing
 EMAIL_POLL = 1.44e7 # in ms (4 hours)
@@ -360,7 +360,7 @@ class Worker(QRunnable):
             mydata = []
             mydata.append(read_csv(filename, sep='\t', dtype={0:"str", 1: "float16", 2:"float16", 3:"float16"}, \
                                    on_bad_lines='skip', na_filter=True, index_col=False, memory_map=True, low_memory=True, \
-                                   usecols=[0,1,2,3], engine='c', names=self.headers, na_values='nan'))
+                                   usecols=[0,1,2,3], engine='c', float_precision='legacy', names=self.headers, na_values='nan'))
         except Exception as e:
             logger.info("In function: " +  inspect.stack()[0][3] + " In file: ", str(filename) + " Exception: " + str(e))
             pass
@@ -436,6 +436,7 @@ class Worker(QRunnable):
             pass
         if data != []:
             dfc = concat(data, ignore_index=True)
+            dfc.dropna(axis=0, inplace=True)
             dfc['Date'] = to_datetime(dfc['Date'], utc=False, format="ISO8601")
             dfc.insert(4, "lHe Rec. [ltrs/day]", dfc['Flow']*60*24/(expansion_ratio))
             dfc.insert(5, "lHe Rec. [ltrs/sec]", (dfc['Flow']/60)/(expansion_ratio))
@@ -595,7 +596,6 @@ class mainWindow(QTabWidget):
         self.quit_flag = 0
         self.draw_bpc_flag = 0
         self.timestamp = datetime.now()
-        self.settings = QSettings("global_settings.ini", QSettings.Format.IniFormat)
         self.caller_id = 0
         self.start_work = 0
         # self.setupUi(self)
@@ -613,12 +613,12 @@ class mainWindow(QTabWidget):
 
         self.threadpool = QThreadPool()
 
-        self.tray_icon = QSystemTrayIcon(self)
-        self.tray_icon.setIcon(self.style().standardIcon(pixmapi))
+        self.tray_icon = QSystemTrayIcon(QIcon(base_dir + r'\icons\main.jpg'))
+        self.tray_icon.setToolTip("bpc-monitor")
 
-        show_action = QAction("Show BPC logger", self)
-        quit_action = QAction("Exit", self)
-        hide_action = QAction("Hide BPC logger", self)
+        show_action = QAction("Show bpc-monitor " + str(PV), self)
+        quit_action = QAction("Exit bpc-monitor " + str(PV), self)
+        hide_action = QAction("Hide bpc-monitor " + str(PV), self)
 
         tray_menu = QMenu()
         tray_menu.addAction(show_action)
@@ -655,6 +655,7 @@ class mainWindow(QTabWidget):
         #logger.info ("In function: " + inspect.stack()[0][3])
         self.start_time = time()
         if getattr(sys, 'frozen', False):
+            pyi_splash.update_text("Launching " + "BPC Monitor " + __version__)
             pyi_splash.close()
 
     def _create_menubar(self, ):
@@ -1561,6 +1562,7 @@ if __name__ == '__main__':
         QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
     # Create the Qt application
     app = QApplication(sys.argv)
+    app.setStyle("windowsvista") # for windows 11, program keeps original style
     # create pcas server
     if PV != '':
         if not PV.endswith(':'):

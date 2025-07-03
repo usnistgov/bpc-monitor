@@ -1,5 +1,10 @@
 # RELEASE
 
+## 07/03/2025   Version 2.4.4
+   * System tray icon updated to easily distinguish the bpc-monitor in system tray
+   * Preserve color themes on windows 11
+   * General cleanup
+
 ## 08/08/2024   Version 2.4.3
    * Add reload button in history tab and set shortcut Ctrl+r for reloading/refreshing the plot
    * Update external dependencies
