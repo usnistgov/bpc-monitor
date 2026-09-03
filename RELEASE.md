@@ -1,5 +1,9 @@
 # RELEASE
 
+## 09/02/2026   Version 2.4.6
+   * Added option to specify custom epics cas server port. epics cas beacon port is defaulted to epics cas server port + 1
+   * General cleanup
+
 ## 07/03/2025   Version 2.4.4
    * System tray icon updated to easily distinguish the bpc-monitor in system tray
    * Preserve color themes on windows 11

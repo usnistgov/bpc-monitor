@@ -8,7 +8,7 @@ __maintainer__ 	=       "Alireza Panna"
 __email__ 	    =       "alireza.panna@nist.gov"
 __status__ 	    =       "Stable"
 __date__        =       "03/25/2023"
-__version__     =       "2.4.3"
+__version__     =       "2.4.6"
 
 TODO            =
 CHANGELOG       =       """
@@ -54,7 +54,7 @@ CHANGELOG       =       """
                         101223: ENH: save the remaining lHe value (from QLabel) and set it as the start lHe (QLineEdit) on program start up. Fix issue with prefix definition 
                                 in PV. update version to 2.0
                         111523: ENH: added two new command line options: -t sets the lHe threshold specified by user, -c adds a multipicative correction factor to the He flow (in l/min
-                                startup option values are saved in log file.
+                                startup option values are saved in log file
                         012824: FIX: more stringent check to verify that the save lHe remaining value is a number in the save_restore file.
                         042824: ADD: added splash screen support, added command line option -dl to log the lHe remaining in ltrs in the log file, fix email issue when threshold
                                 was updated, update version to 2.3
@@ -64,4 +64,6 @@ CHANGELOG       =       """
                         080824: ENH: Add reload button in history tab and set shortcut Ctrl+r for reloading/refreshing the plot,
                                      Update external dependencies, set shortcut Ctrl+q to quit the program, Add status bar in history tab
                         070325: ENH: System tray icon updated to easily distinguish the bpc-monitor in system tray, update to preserve stylsheet on windows 11
+                        090226: MNT: Minor fixes, added option to specify custom epics cas server port, cas beacon port is set to cas server port + 1 update to
+                                     2.4.6
                         """

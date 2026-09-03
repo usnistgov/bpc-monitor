@@ -85,7 +85,7 @@ logger.setLevel(logging.INFO)
 # num_processes = kernel32.GetConsoleProcessList(process_array, 1)
 # if num_processes < 3: ctypes.WinDLL('user32').ShowWindow(kernel32.GetConsoleWindow(), 0)
 # python globals
-__version__ = '2.4.4' # Program version string
+__version__ = '2.4.6' # Program version string
 MAIN_THREAD_POLL = 1000 # in ms (1 s)
 # EMAIL_POLL = 300000 # for testing
 EMAIL_POLL = 1.44e7 # in ms (4 hours)
@@ -461,7 +461,7 @@ class Worker(QRunnable):
         global WORKERS
         dfb = []
         if main_window.btn_sum_rec.isChecked():
-            self.binsize = '1S'
+            self.binsize = '1s'
         else:
             self.binsize = main_window.cb_resample.currentText()
         try:
@@ -513,6 +513,8 @@ class aboutWindow(QWidget):
         self.te_about.append("Email: alireza.panna@nist.gov & frank.seifert@nist.gov")
         self.te_about.append("EPICS PV for this server: " + str(PV))
         self.te_about.append("EPICS records: " + str(list(pvdb.keys())))
+        self.te_about.append("EPICS CAS Server port: " + str(cas_server_port))
+        self.te_about.append("EPICS CAS Beacon port: " + str(cas_beacon_port))
         self.te_about.append("Current data folder: " + str(datadir))
         self.te_about.append("Current log folder: " + str(logdir))
 
@@ -973,8 +975,8 @@ class mainWindow(QTabWidget):
         self.lbl_resample = QLabel('BINNING: ')
         self.lbl_resample.setFixedHeight(40)
         self.cb_resample = QComboBox()
-        self.cb_resample.addItems(['1S', '10S', '30S', '1min', '30min', '1H', \
-                                   '2H', '12H', '1D', '1W', '2W', '1M'])
+        self.cb_resample.addItems(['1s', '10s', '30s', '1min', '30min', '1h', \
+                                   '2h', '12h', '1D', '1W', '2W', '1M'])
         self.cb_resample.setCurrentText('1min')
         self.cb_resample.setFixedHeight(20)
         self.cb_resample.setFixedWidth(70)
@@ -1411,7 +1413,7 @@ class mainWindow(QTabWidget):
          self.btn_sum_rec.setChecked(True)
          self.btn_sum_rec.setEnabled(False)
          self.btn_plot.setEnabled(False)
-         self.binsize = '1S'
+         self.binsize = '1s'
          self.caller_id = 2
          x=self.startdt.dateTime().toPyDateTime().timestamp()
          y=self.enddt.dateTime().toPyDateTime().timestamp()
@@ -1489,12 +1491,15 @@ def range_limited_float_type(arg):
 
 if __name__ == '__main__':
     # user options to run multiple instances with different configurations for example
+    cas_server_port = ""
+    cas_beacon_port = ""
     parser = ArgumentParser(prog = 'bpc-monitor',
                             description='Configure bpc-monitor.',
                             epilog='A utility to log data and estimate lHe usage from the back pressure controller', add_help=True)
     parser.add_argument('-i', '--host', help='specify the host address', default='172.30.33.212')
     parser.add_argument('-p', '--port',  help='specify the port', default='20256', type=int)
     parser.add_argument('-e', '--epics_pv',  help='Specify the PV epics prefix', default='')
+    parser.add_argument('-ep', '--epics_cas_server_port', help='Specify the epics cas server port', default='5064')
     parser.add_argument('-s', '--save_path', help='Specify data directory', default="C:" + sep + "_datacache_", type=dir_path)
     parser.add_argument('-l', '--log_path', help='Specify log directory', default="C:" + sep + "_logcache_", type=dir_path)
     parser.add_argument('-d', '--debug', help='Debugging mode', action='store_true')
@@ -1510,6 +1515,7 @@ if __name__ == '__main__':
     myserver = args.host
     port = args.port
     PV = args.epics_pv
+    cas_server_port = args.epics_cas_server_port
     datadir = args.save_path
     logdir = args.log_path
     debug_mode = args.debug
@@ -1546,6 +1552,7 @@ if __name__ == '__main__':
                 'Server: ' + str(myserver) + \
                 ', Port: ' +  str(port) + \
                 ', PV: ' +  str(PV) + \
+                ', epics cas server port: ' +  str(cas_server_port) + \
                 ', Datadir: ' + str(datadir) + \
                 ', Logdir: ' + str(logdir) + \
                 ', Receiver: ' + str(receiver) + \
@@ -1569,6 +1576,9 @@ if __name__ == '__main__':
             prefix = PV + ':'
         else:
             prefix = PV
+        cas_beacon_port = int(cas_server_port) + 1
+        environ['EPICS_CAS_SERVER_PORT'] = str(cas_server_port) # Move pcaspy to custom port, default is 5064
+        environ['EPICS_CAS_BEACON_PORT'] = str(cas_beacon_port)
         server = SimpleServer()
         server.createPV(prefix, pvdb)
     if not debug_mode:
